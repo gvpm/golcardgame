@@ -472,6 +472,38 @@
             margin-bottom: 16px;
         }
 
+        .pattern-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .pattern-controls span {
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+
+        .pattern-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+            font-size: 0.86rem;
+            user-select: none;
+        }
+
+        .pattern-switch input {
+            width: 18px;
+            height: 18px;
+            margin: 0;
+        }
+
         .pattern-summary-item {
             padding: 12px;
             border: 1px solid rgba(255, 255, 255, 0.07);
@@ -501,6 +533,21 @@
             border: 1px solid rgba(255, 255, 255, 0.07);
             border-radius: 12px;
             background: rgba(255, 255, 255, 0.03);
+        }
+
+        .pattern-entry-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .pattern-color-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
         }
 
         .pattern-entry strong {
@@ -737,6 +784,13 @@
                 </div>
                 <button class="pattern-close" id="pattern-close" aria-label="Fechar padroes">×</button>
             </div>
+            <div class="pattern-controls">
+                <span>Reconhecimento sobreposto</span>
+                <label class="pattern-switch">
+                    <input type="checkbox" id="overlap-toggle">
+                    <span id="overlap-label">Desligado</span>
+                </label>
+            </div>
             <div class="pattern-summary" id="pattern-summary"></div>
             <div class="pattern-list" id="pattern-list"></div>
         </div>
@@ -781,6 +835,8 @@
         const patternCloseButton = document.getElementById('pattern-close');
         const patternSummary = document.getElementById('pattern-summary');
         const patternList = document.getElementById('pattern-list');
+        const overlapToggle = document.getElementById('overlap-toggle');
+        const overlapLabel = document.getElementById('overlap-label');
         const insertButton = document.getElementById('btn-insert');
         const insertPanel = document.getElementById('insert-panel');
         const insertGrid = document.getElementById('insert-grid');
@@ -795,6 +851,17 @@
         let longPressActive = false;
         let patternOverlay = null;
         let analysisMode = false;
+        let allowOverlappingPatterns = false;
+        const patternColors = {
+            Glider: { fill: 'rgba(125, 211, 167, 0.18)', stroke: 'rgba(125, 211, 167, 0.94)', solid: '#7dd3a7' },
+            LWSS: { fill: 'rgba(96, 165, 250, 0.16)', stroke: 'rgba(96, 165, 250, 0.94)', solid: '#60a5fa' },
+            Blinker: { fill: 'rgba(248, 113, 113, 0.16)', stroke: 'rgba(248, 113, 113, 0.94)', solid: '#f87171' },
+            Beacon: { fill: 'rgba(250, 204, 21, 0.16)', stroke: 'rgba(250, 204, 21, 0.94)', solid: '#facc15' },
+            Block: { fill: 'rgba(192, 132, 252, 0.16)', stroke: 'rgba(192, 132, 252, 0.94)', solid: '#c084fc' },
+            Boat: { fill: 'rgba(244, 114, 182, 0.16)', stroke: 'rgba(244, 114, 182, 0.94)', solid: '#f472b6' },
+            Tub: { fill: 'rgba(251, 146, 60, 0.16)', stroke: 'rgba(251, 146, 60, 0.94)', solid: '#fb923c' },
+            Toad: { fill: 'rgba(45, 212, 191, 0.16)', stroke: 'rgba(45, 212, 191, 0.94)', solid: '#2dd4bf' }
+        };
 
         function createGrid() {
             return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
@@ -884,12 +951,9 @@
             if (!analysisMode || !patternOverlay || !patternOverlay.matches.length) return;
 
             for (const match of patternOverlay.matches) {
-                const fillColor = match.family === 'Glider'
-                    ? 'rgba(125, 211, 167, 0.18)'
-                    : 'rgba(96, 165, 250, 0.16)';
-                const strokeColor = match.family === 'Glider'
-                    ? 'rgba(125, 211, 167, 0.94)'
-                    : 'rgba(96, 165, 250, 0.94)';
+                const colors = patternColors[match.family] || patternColors.LWSS;
+                const fillColor = colors.fill;
+                const strokeColor = colors.stroke;
 
                 ctx.fillStyle = fillColor;
                 ctx.strokeStyle = strokeColor;
@@ -976,6 +1040,11 @@
             patternDetailsButton.textContent = patternCard.classList.contains('hidden')
                 ? 'PAT details'
                 : 'Hide details';
+        }
+
+        function updateOverlapToggle() {
+            overlapToggle.checked = allowOverlappingPatterns;
+            overlapLabel.textContent = allowOverlappingPatterns ? 'Ligado' : 'Desligado';
         }
 
         function normalizeGridPosition(row, col) {
@@ -1472,7 +1541,42 @@
                 }
             }
 
-            return { matches, totals };
+            const filteredMatches = allowOverlappingPatterns
+                ? matches
+                : filterOverlappingMatches(matches);
+
+            const filteredTotals = { Glider: 0, LWSS: 0, Blinker: 0, Beacon: 0, Block: 0, Boat: 0, Tub: 0, Toad: 0 };
+            filteredMatches.forEach((match) => {
+                filteredTotals[match.family] += 1;
+            });
+
+            return { matches: filteredMatches, totals: filteredTotals };
+        }
+
+        function filterOverlappingMatches(matches) {
+            const claimed = new Set();
+            const sorted = matches.slice().sort((a, b) => {
+                const liveDiff = b.liveCells.length - a.liveCells.length;
+                if (liveDiff !== 0) return liveDiff;
+
+                const areaDiff = (b.width * b.height) - (a.width * a.height);
+                if (areaDiff !== 0) return areaDiff;
+
+                return a.family.localeCompare(b.family);
+            });
+
+            const kept = [];
+            for (const match of sorted) {
+                const overlaps = match.liveCells.some(([row, col]) => claimed.has(row + ':' + col));
+                if (overlaps) continue;
+
+                kept.push(match);
+                match.liveCells.forEach(([row, col]) => {
+                    claimed.add(row + ':' + col);
+                });
+            }
+
+            return kept;
         }
 
         function renderPatternAnalysis(analysis) {
@@ -1513,21 +1617,34 @@
             analysis.matches.forEach((match, index) => {
                 const item = document.createElement('div');
                 item.className = 'pattern-entry';
+
+                const header = document.createElement('div');
+                header.className = 'pattern-entry-header';
+
+                const dot = document.createElement('span');
+                dot.className = 'pattern-color-dot';
+                dot.style.background = patternColors[match.family]?.solid || '#ffffff';
+
                 const title = document.createElement('strong');
                 title.textContent = match.family + ' #' + (index + 1);
+
+                header.appendChild(dot);
+                header.appendChild(title);
+
                 const details = document.createElement('span');
                 details.textContent =
                     'Fase ' + match.phase +
                     ' | linha ' + (match.row + 1) +
                     ' | coluna ' + (match.col + 1) +
                     ' | area ' + match.width + 'x' + match.height;
-                item.appendChild(title);
+                item.appendChild(header);
                 item.appendChild(details);
                 patternList.appendChild(item);
             });
         }
 
         function showPatternTip(match) {
+            patternTipTitle.style.color = patternColors[match.family]?.solid || '#ffffff';
             patternTipTitle.textContent = match.family + ' | fase ' + match.phase;
             patternTipBody.textContent =
                 'Linha ' + (match.row + 1) +
@@ -1767,6 +1884,12 @@
             setAnalysisMode(!analysisMode);
         });
         patternCatalogButton.addEventListener('click', togglePatternCatalog);
+        overlapToggle.addEventListener('change', (event) => {
+            allowOverlappingPatterns = event.target.checked;
+            updateOverlapToggle();
+            refreshPatternOverlayIfOpen();
+            drawGrid();
+        });
         patternDetailsButton.addEventListener('click', () => {
             if (!analysisMode) return;
             if (patternCard.classList.contains('hidden')) {
@@ -1848,6 +1971,7 @@
         updateFullscreenBtn();
         updatePatternButton();
         updatePatternDetailsButton();
+        updateOverlapToggle();
         updateStatus();
     </script>
 </body>
