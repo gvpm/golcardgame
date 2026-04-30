@@ -166,6 +166,29 @@
             font-size: 0.95rem;
         }
 
+        .menu-inline-panel {
+            display: none;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .menu-inline-panel.open {
+            display: block;
+        }
+
+        .menu-inline-panel label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .menu-inline-panel input[type="range"] {
+            width: 100%;
+        }
+
         .step-button {
             width: 70px;
             height: 70px;
@@ -652,6 +675,12 @@
             <button id="btn-rle">Inserir RLE</button>
             <button id="btn-invert">Inverter cores</button>
             <button id="btn-border">Borda ligada</button>
+            <button id="btn-size">Tamanho</button>
+            <div class="menu-inline-panel" id="size-panel">
+                <label for="size-slider" id="size-label">Resolucao 28 x 13</label>
+                <input id="size-slider" type="range" min="9" max="22" step="1" value="13" aria-label="Ajustar resolucao do grid">
+            </div>
+            <button id="btn-refresh">Refresh</button>
         </div>
     </div>
 
@@ -698,8 +727,9 @@
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
 
-        const ROWS = 13;
-        const COLS = 28;
+        const GRID_ASPECT_RATIO = 28 / 13;
+        let ROWS = 13;
+        let COLS = 28;
         let cellWidth = 16;
         let cellHeight = 16;
 
@@ -728,6 +758,10 @@
         const patternCloseButton = document.getElementById('pattern-close');
         const patternSummary = document.getElementById('pattern-summary');
         const patternList = document.getElementById('pattern-list');
+        const sizeButton = document.getElementById('btn-size');
+        const sizePanel = document.getElementById('size-panel');
+        const sizeSlider = document.getElementById('size-slider');
+        const sizeLabel = document.getElementById('size-label');
         const patternTip = document.getElementById('pattern-tip');
         const patternTipTitle = document.getElementById('pattern-tip-title');
         const patternTipBody = document.getElementById('pattern-tip-body');
@@ -747,6 +781,31 @@
             cellWidth = canvas.width / COLS;
             cellHeight = canvas.height / ROWS;
             drawGrid();
+        }
+
+        function updateSizeLabel() {
+            sizeLabel.textContent = 'Resolucao ' + COLS + ' x ' + ROWS;
+            sizeSlider.value = String(ROWS);
+        }
+
+        function setGridResolution(nextRows) {
+            const rows = Math.max(9, Math.min(22, nextRows));
+            const cols = Math.max(12, Math.round(rows * GRID_ASPECT_RATIO));
+
+            if (rows === ROWS && cols === COLS) {
+                updateSizeLabel();
+                return;
+            }
+
+            ROWS = rows;
+            COLS = cols;
+            grid = createGrid();
+            generation = 0;
+
+            refreshPatternOverlayIfOpen();
+            updateSizeLabel();
+            resizeCanvas();
+            updateStatus();
         }
 
         function drawGrid() {
@@ -1619,6 +1678,10 @@
             menuPanel.classList.toggle('open');
         });
 
+        sizeButton.addEventListener('click', () => {
+            sizePanel.classList.toggle('open');
+        });
+
         document.getElementById('show-project').addEventListener('click', () => {
             mainContent.style.display = '';
             topMenuPanel.classList.remove('open');
@@ -1662,6 +1725,13 @@
             updateBorderBtn();
             updateStatus();
         });
+        document.getElementById('btn-refresh').addEventListener('click', () => {
+            const freshUrl = window.location.pathname + '?refresh=' + Date.now();
+            window.location.replace(freshUrl);
+        });
+        sizeSlider.addEventListener('input', (event) => {
+            setGridResolution(Number(event.target.value));
+        });
         document.getElementById('btn-rle').addEventListener('click', () => {
             const rle = window.prompt('Cole o padrao RLE');
             if (!rle) return;
@@ -1704,6 +1774,7 @@
         injectPattern(patterns.glider);
         resizeCanvas();
         renderPatternCatalog();
+        updateSizeLabel();
         updatePlayPauseBtn();
         updateBorderBtn();
         updateFullscreenBtn();
