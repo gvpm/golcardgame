@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0a0d11">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Gol Card Game">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
     <title>Gol Card Game</title>
     <style>
         :root {
@@ -120,6 +127,10 @@
             background: rgba(255, 255, 255, 0.08);
         }
 
+        .menu-panel button[hidden] {
+            display: none;
+        }
+
         #close-overlay {
             background: rgba(125, 211, 167, 0.12);
             border-color: rgba(125, 211, 167, 0.25);
@@ -218,6 +229,7 @@
         <button class="menu-toggle" id="top-menu-toggle" aria-label="Abrir menu superior">☰</button>
         <div class="menu-panel" id="top-menu-panel">
             <button id="show-project">Gol Card Game</button>
+            <button id="install-app" hidden>Instalar app</button>
             <button id="close-overlay">Ocultar conteudo</button>
         </div>
     </div>
@@ -239,6 +251,7 @@
             <button id="btn-clear">Limpar grid</button>
             <button id="btn-speedup">Mais rapido</button>
             <button id="btn-speeddown">Mais lento</button>
+            <button id="btn-fullscreen">Tela cheia</button>
             <button id="btn-rle">Inserir RLE</button>
             <button id="btn-invert">Inverter cores</button>
             <button id="btn-border">Borda ligada</button>
@@ -261,9 +274,12 @@
         let inverted = false;
         let wrapBorders = true;
         let generation = 0;
+        let deferredInstallPrompt = null;
 
         const status = document.getElementById('status');
         const mainContent = document.getElementById('main-content');
+        const installAppButton = document.getElementById('install-app');
+        const fullscreenButton = document.getElementById('btn-fullscreen');
 
         function createGrid() {
             return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
@@ -510,6 +526,35 @@
             document.getElementById('btn-border').textContent = wrapBorders ? 'Borda ligada' : 'Borda desligada';
         }
 
+        function updateFullscreenBtn() {
+            const active = Boolean(document.fullscreenElement);
+            fullscreenButton.textContent = active ? 'Sair da tela cheia' : 'Tela cheia';
+        }
+
+        async function toggleFullscreen() {
+            try {
+                if (document.fullscreenElement) {
+                    await document.exitFullscreen();
+                } else {
+                    await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+                }
+            } catch (error) {
+                window.alert('A tela cheia nao foi liberada neste navegador.');
+            }
+        }
+
+        async function installApp() {
+            if (!deferredInstallPrompt) return;
+
+            deferredInstallPrompt.prompt();
+            const choice = await deferredInstallPrompt.userChoice;
+            if (choice.outcome === 'accepted') {
+                deferredInstallPrompt = null;
+                installAppButton.hidden = true;
+                topMenuPanel.classList.remove('open');
+            }
+        }
+
         const patterns = {
             glider: [
                 [0, 1, 0],
@@ -593,6 +638,7 @@
         document.getElementById('btn-clear').addEventListener('click', clearGrid);
         document.getElementById('btn-speedup').addEventListener('click', () => changeSpeed(-40));
         document.getElementById('btn-speeddown').addEventListener('click', () => changeSpeed(40));
+        fullscreenButton.addEventListener('click', toggleFullscreen);
         document.getElementById('btn-invert').addEventListener('click', () => {
             inverted = !inverted;
             drawGrid();
@@ -612,17 +658,35 @@
             }
             injectPattern(pattern);
         });
+        installAppButton.addEventListener('click', installApp);
 
         window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('fullscreenchange', updateFullscreenBtn);
+
+        window.addEventListener('beforeinstallprompt', (event) => {
+            event.preventDefault();
+            deferredInstallPrompt = event;
+            installAppButton.hidden = false;
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            installAppButton.hidden = true;
+        });
 
         if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
             window.screen.orientation.lock('landscape').catch(() => {});
+        }
+
+        if ('serviceWorker' in navigator && window.isSecureContext) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
         }
 
         injectPattern(patterns.glider);
         resizeCanvas();
         updatePlayPauseBtn();
         updateBorderBtn();
+        updateFullscreenBtn();
         updateStatus();
     </script>
 </body>
