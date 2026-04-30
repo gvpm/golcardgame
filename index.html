@@ -189,6 +189,28 @@
             width: 100%;
         }
 
+        .insert-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .insert-option {
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            cursor: pointer;
+        }
+
+        .insert-option span {
+            display: block;
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.72rem;
+            text-align: center;
+        }
+
         .step-button {
             width: 70px;
             height: 70px;
@@ -664,9 +686,10 @@
         <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu inferior">☰</button>
         <div class="menu-panel" id="menu-panel">
             <button id="btn-play">Iniciar</button>
-            <button id="btn-glider">Inserir glider</button>
-            <button id="btn-lwss">Inserir lwss</button>
-            <button id="btn-copperhead">Inserir copperhead</button>
+            <button id="btn-insert">Inserir</button>
+            <div class="menu-inline-panel" id="insert-panel">
+                <div class="insert-grid" id="insert-grid"></div>
+            </div>
             <button id="btn-random">Preencher aleatorio</button>
             <button id="btn-clear">Limpar grid</button>
             <button id="btn-speedup">Mais rapido</button>
@@ -758,6 +781,9 @@
         const patternCloseButton = document.getElementById('pattern-close');
         const patternSummary = document.getElementById('pattern-summary');
         const patternList = document.getElementById('pattern-list');
+        const insertButton = document.getElementById('btn-insert');
+        const insertPanel = document.getElementById('insert-panel');
+        const insertGrid = document.getElementById('insert-grid');
         const sizeButton = document.getElementById('btn-size');
         const sizePanel = document.getElementById('size-panel');
         const sizeSlider = document.getElementById('size-slider');
@@ -1259,7 +1285,11 @@
                 glider: buildFamilyVariants('Glider', patterns.glider, gliderTransforms),
                 lwss: buildFamilyVariants('LWSS', patterns.lwss, [patterns.lwss, mirrorPattern(patterns.lwss)]),
                 blinker: buildFamilyVariants('Blinker', patterns.blinker, [patterns.blinker]),
-                beacon: buildFamilyVariants('Beacon', patterns.beacon, [patterns.beacon])
+                beacon: buildFamilyVariants('Beacon', patterns.beacon, [patterns.beacon]),
+                block: buildFamilyVariants('Block', patterns.block, [patterns.block]),
+                boat: buildFamilyVariants('Boat', patterns.boat, [patterns.boat]),
+                tub: buildFamilyVariants('Tub', patterns.tub, [patterns.tub]),
+                toad: buildFamilyVariants('Toad', patterns.toad, [patterns.toad])
             };
         }
 
@@ -1289,7 +1319,7 @@
         function renderPatternCatalog() {
             patternCatalogList.innerHTML = '';
 
-            const catalogOrder = ['Glider', 'LWSS', 'Blinker', 'Beacon'];
+            const catalogOrder = ['Glider', 'LWSS', 'Blinker', 'Beacon', 'Block', 'Boat', 'Tub', 'Toad'];
             for (const familyName of catalogOrder) {
                 const familyVariants = Object.values(patternFamilies)
                     .flat()
@@ -1325,6 +1355,34 @@
 
                 group.appendChild(variantsWrap);
                 patternCatalogList.appendChild(group);
+            }
+        }
+
+        function renderInsertOptions() {
+            insertGrid.innerHTML = '';
+
+            const insertOrder = [
+                ['glider', 'Glider'],
+                ['lwss', 'LWSS'],
+                ['blinker', 'Blinker'],
+                ['beacon', 'Beacon'],
+                ['block', 'Block'],
+                ['boat', 'Boat'],
+                ['tub', 'Tub'],
+                ['toad', 'Toad']
+            ];
+
+            for (const [key, label] of insertOrder) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'insert-option';
+                button.setAttribute('aria-label', 'Inserir ' + label);
+                button.innerHTML = buildPatternPreviewSvg(patterns[key]) + '<span>' + label + '</span>';
+                button.addEventListener('click', () => {
+                    injectPattern(patterns[key]);
+                    insertPanel.classList.remove('open');
+                });
+                insertGrid.appendChild(button);
             }
         }
 
@@ -1374,7 +1432,7 @@
 
         function analyzeCurrentGrid() {
             const matches = [];
-            const totals = { Glider: 0, LWSS: 0, Blinker: 0, Beacon: 0 };
+            const totals = { Glider: 0, LWSS: 0, Blinker: 0, Beacon: 0, Block: 0, Boat: 0, Tub: 0, Toad: 0 };
             const seen = new Set();
 
             for (const familyName of Object.keys(patternFamilies)) {
@@ -1425,7 +1483,11 @@
                 { label: 'Gliders encontrados', value: analysis.totals.Glider },
                 { label: 'LWSS encontrados', value: analysis.totals.LWSS },
                 { label: 'Blinkers encontrados', value: analysis.totals.Blinker },
-                { label: 'Beacons encontrados', value: analysis.totals.Beacon }
+                { label: 'Beacons encontrados', value: analysis.totals.Beacon },
+                { label: 'Blocks encontrados', value: analysis.totals.Block },
+                { label: 'Boats encontrados', value: analysis.totals.Boat },
+                { label: 'Tubs encontrados', value: analysis.totals.Tub },
+                { label: 'Toads encontrados', value: analysis.totals.Toad }
             ];
 
             for (const item of summaryItems) {
@@ -1443,7 +1505,7 @@
             if (!analysis.matches.length) {
                 const empty = document.createElement('div');
                 empty.className = 'pattern-empty';
-                empty.textContent = 'Nenhum Glider, LWSS, Blinker ou Beacon foi encontrado neste estado do grid.';
+                empty.textContent = 'Nenhum dos padroes configurados foi encontrado neste estado do grid.';
                 patternList.appendChild(empty);
                 return;
             }
@@ -1577,20 +1639,24 @@
                 [0, 0, 1, 1],
                 [0, 0, 1, 1]
             ], { phaseCount: 2 }),
-            copperhead: [
-                [0, 1, 1, 0, 0, 1, 1, 0],
-                [0, 0, 0, 1, 1, 0, 0, 0],
-                [0, 0, 0, 1, 1, 0, 0, 0],
-                [1, 0, 1, 0, 0, 1, 0, 1],
-                [1, 0, 0, 0, 0, 0, 0, 1],
-                [0, 0, 0, 0, 0, 0, 0, 0],
-                [1, 0, 0, 0, 0, 0, 0, 1],
-                [0, 1, 1, 0, 0, 1, 1, 0],
-                [0, 0, 1, 1, 1, 1, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 1, 1, 0, 0, 0],
-                [0, 0, 0, 1, 1, 0, 0, 0]
-            ]
+            block: Object.assign([
+                [1, 1],
+                [1, 1]
+            ], { phaseCount: 1 }),
+            boat: Object.assign([
+                [1, 1, 0],
+                [1, 0, 1],
+                [0, 1, 0]
+            ], { phaseCount: 1 }),
+            tub: Object.assign([
+                [0, 1, 0],
+                [1, 0, 1],
+                [0, 1, 0]
+            ], { phaseCount: 1 }),
+            toad: Object.assign([
+                [0, 1, 1, 1],
+                [1, 1, 1, 0]
+            ], { phaseCount: 2 })
         };
 
         const patternFamilies = createPatternFamilies();
@@ -1678,6 +1744,10 @@
             menuPanel.classList.toggle('open');
         });
 
+        insertButton.addEventListener('click', () => {
+            insertPanel.classList.toggle('open');
+        });
+
         sizeButton.addEventListener('click', () => {
             sizePanel.classList.toggle('open');
         });
@@ -1708,9 +1778,6 @@
         });
         floatingStepButton.addEventListener('click', stepOnce);
         patternCloseButton.addEventListener('click', hidePatternTextPanel);
-        document.getElementById('btn-glider').addEventListener('click', () => injectPattern(patterns.glider));
-        document.getElementById('btn-lwss').addEventListener('click', () => injectPattern(patterns.lwss));
-        document.getElementById('btn-copperhead').addEventListener('click', () => injectPattern(patterns.copperhead));
         document.getElementById('btn-random').addEventListener('click', randomizeGrid);
         document.getElementById('btn-clear').addEventListener('click', clearGrid);
         document.getElementById('btn-speedup').addEventListener('click', () => changeSpeed(-40));
@@ -1774,6 +1841,7 @@
         injectPattern(patterns.glider);
         resizeCanvas();
         renderPatternCatalog();
+        renderInsertOptions();
         updateSizeLabel();
         updatePlayPauseBtn();
         updateBorderBtn();
