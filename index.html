@@ -470,6 +470,10 @@
             document.getElementById('btn-play').textContent = running ? 'Pausar' : 'Iniciar';
         }
 
+        function updateBorderBtn() {
+            document.getElementById('btn-border').textContent = wrapBorders ? 'Borda ligada' : 'Borda desligada';
+        }
+
         const patterns = {
             glider: [
                 [0, 1, 0],
@@ -561,7 +565,7 @@
         });
         document.getElementById('btn-border').addEventListener('click', () => {
             wrapBorders = !wrapBorders;
-            document.getElementById('btn-border').textContent = wrapBorders ? 'Borda ligada' : 'Borda desligada';
+            updateBorderBtn();
             updateStatus();
         });
         document.getElementById('btn-rle').addEventListener('click', () => {
@@ -580,6 +584,7 @@
         injectPattern(patterns.glider);
         resizeCanvas();
         updatePlayPauseBtn();
+        updateBorderBtn();
         updateStatus();
     </script>
 </body>
