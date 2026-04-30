@@ -2,12 +2,11 @@
   <rect width="512" height="512" rx="96" fill="#0a0d11"/>
   <rect x="96" y="96" width="320" height="320" rx="28" fill="#111820" stroke="#2a3745" stroke-width="12"/>
   <g fill="#f4f7fb">
-    <rect x="138" y="138" width="54" height="54" rx="10"/>
-    <rect x="246" y="138" width="54" height="54" rx="10"/>
-    <rect x="300" y="192" width="54" height="54" rx="10"/>
-    <rect x="138" y="246" width="54" height="54" rx="10"/>
-    <rect x="192" y="246" width="54" height="54" rx="10"/>
-    <rect x="246" y="246" width="54" height="54" rx="10"/>
+    <rect x="224" y="144" width="64" height="64" rx="12"/>
+    <rect x="288" y="208" width="64" height="64" rx="12"/>
+    <rect x="160" y="272" width="64" height="64" rx="12"/>
+    <rect x="224" y="272" width="64" height="64" rx="12"/>
+    <rect x="288" y="272" width="64" height="64" rx="12"/>
   </g>
   <circle cx="404" cy="108" r="24" fill="#7dd3a7"/>
 </svg>
