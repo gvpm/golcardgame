@@ -81,6 +81,13 @@
             pointer-events: none;
         }
 
+        .analysis-mode .top-menu,
+        .analysis-mode .menu,
+        .analysis-mode .step-button {
+            opacity: 0;
+            pointer-events: none;
+        }
+
         .top-menu {
             top: calc(12px + env(safe-area-inset-top, 0px));
             right: calc(12px + env(safe-area-inset-right, 0px));
@@ -94,6 +101,9 @@
         .step-control {
             right: calc(12px + env(safe-area-inset-right, 0px));
             bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .menu-toggle {
@@ -162,6 +172,37 @@
             box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
         }
 
+        .pattern-button {
+            width: 70px;
+            height: 70px;
+            border: 1px solid rgba(244, 247, 251, 0.16);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
+        }
+
+        .pattern-details-button {
+            min-width: 92px;
+            height: 54px;
+            padding: 0 16px;
+            border: 1px solid rgba(244, 247, 251, 0.14);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+        }
+
+        .pattern-details-button[hidden] {
+            display: none;
+        }
+
         .menu-panel button:hover {
             background: rgba(255, 255, 255, 0.08);
         }
@@ -198,6 +239,158 @@
             margin: 14px 0 0;
             color: var(--muted);
             line-height: 1.5;
+        }
+
+        .pattern-modal {
+            position: fixed;
+            top: calc(12px + env(safe-area-inset-top, 0px));
+            right: calc(12px + env(safe-area-inset-right, 0px));
+            z-index: 14;
+            display: none;
+            align-items: flex-start;
+            justify-content: flex-end;
+            pointer-events: none;
+        }
+
+        .pattern-modal.open {
+            display: flex;
+        }
+
+        .pattern-card {
+            width: min(88vw, 420px);
+            max-height: min(72vh, 540px);
+            overflow-y: auto;
+            padding: 20px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: rgba(10, 14, 19, 0.96);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+            pointer-events: auto;
+        }
+
+        .pattern-card.hidden {
+            display: none;
+        }
+
+        .pattern-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .pattern-card-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+        .pattern-card-header p {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .pattern-close {
+            width: 46px;
+            height: 46px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            font-size: 1.2rem;
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+
+        .pattern-summary {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .pattern-summary-item {
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .pattern-summary-item strong {
+            display: block;
+            font-size: 1.35rem;
+            margin-bottom: 4px;
+        }
+
+        .pattern-summary-item span {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .pattern-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .pattern-entry {
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .pattern-entry strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.96rem;
+        }
+
+        .pattern-entry span {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .pattern-empty {
+            padding: 14px;
+            border: 1px dashed rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .pattern-tip {
+            position: fixed;
+            left: 50%;
+            bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+            transform: translateX(-50%);
+            z-index: 15;
+            display: none;
+            min-width: min(82vw, 280px);
+            max-width: min(90vw, 360px);
+            padding: 12px 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            background: rgba(10, 14, 19, 0.96);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+            text-align: center;
+        }
+
+        .pattern-tip.open {
+            display: block;
+        }
+
+        .pattern-tip strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.98rem;
+        }
+
+        .pattern-tip span {
+            color: var(--muted);
+            font-size: 0.86rem;
         }
 
         .hud {
@@ -254,8 +447,30 @@
                 font-size: 2rem;
             }
 
+            .pattern-button {
+                width: 66px;
+                height: 66px;
+                font-size: 0.92rem;
+            }
+
+            .pattern-details-button {
+                min-width: 84px;
+                height: 50px;
+                padding: 0 14px;
+                font-size: 0.82rem;
+            }
+
             .overlay-card h1 {
                 font-size: 1.45rem;
+            }
+
+            .pattern-card {
+                width: min(92vw, 340px);
+                padding: 16px;
+            }
+
+            .pattern-summary {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -305,7 +520,27 @@
     </div>
 
     <div class="step-control">
+        <button class="pattern-details-button" id="btn-pattern-details" aria-label="Mostrar detalhes dos padroes" hidden>PAT details</button>
+        <button class="pattern-button" id="btn-patterns" aria-label="Mostrar padroes encontrados">PAT</button>
         <button class="step-button" id="btn-step-floating" aria-label="Avancar uma geracao">&gt;</button>
+    </div>
+
+    <div class="pattern-modal" id="pattern-modal">
+        <div class="pattern-card" id="pattern-card">
+            <div class="pattern-card-header">
+                <div>
+                    <h2>Padroes identificados</h2>
+                    <p>Analise do grid atual para ajudar a pontuacao da rodada.</p>
+                </div>
+                <button class="pattern-close" id="pattern-close" aria-label="Fechar padroes">×</button>
+            </div>
+            <div class="pattern-summary" id="pattern-summary"></div>
+            <div class="pattern-list" id="pattern-list"></div>
+        </div>
+    </div>
+    <div class="pattern-tip" id="pattern-tip">
+        <strong id="pattern-tip-title"></strong>
+        <span id="pattern-tip-body"></span>
     </div>
 
     <script>
@@ -332,8 +567,20 @@
         const fullscreenButton = document.getElementById('btn-fullscreen');
         const uiRoot = document.body;
         const floatingStepButton = document.getElementById('btn-step-floating');
+        const patternButton = document.getElementById('btn-patterns');
+        const patternDetailsButton = document.getElementById('btn-pattern-details');
+        const patternModal = document.getElementById('pattern-modal');
+        const patternCard = document.getElementById('pattern-card');
+        const patternCloseButton = document.getElementById('pattern-close');
+        const patternSummary = document.getElementById('pattern-summary');
+        const patternList = document.getElementById('pattern-list');
+        const patternTip = document.getElementById('pattern-tip');
+        const patternTipTitle = document.getElementById('pattern-tip-title');
+        const patternTipBody = document.getElementById('pattern-tip-body');
         let longPressTimer = null;
         let longPressActive = false;
+        let patternOverlay = null;
+        let analysisMode = false;
 
         function createGrid() {
             return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
@@ -390,6 +637,37 @@
                 ctx.lineTo(x, canvas.height);
                 ctx.stroke();
             }
+
+            drawPatternOverlay();
+        }
+
+        function drawPatternOverlay() {
+            if (!analysisMode || !patternOverlay || !patternOverlay.matches.length) return;
+
+            for (const match of patternOverlay.matches) {
+                const fillColor = match.family === 'Glider'
+                    ? 'rgba(125, 211, 167, 0.18)'
+                    : 'rgba(96, 165, 250, 0.16)';
+                const strokeColor = match.family === 'Glider'
+                    ? 'rgba(125, 211, 167, 0.94)'
+                    : 'rgba(96, 165, 250, 0.94)';
+
+                ctx.fillStyle = fillColor;
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = 2;
+
+                for (const [cellRow, cellCol] of match.footprintCells) {
+                    const x = cellCol * cellWidth;
+                    const y = cellRow * cellHeight;
+                    ctx.fillRect(x, y, cellWidth, cellHeight);
+                    ctx.strokeRect(
+                        x + 1,
+                        y + 1,
+                        Math.max(cellWidth - 2, 1),
+                        Math.max(cellHeight - 2, 1)
+                    );
+                }
+            }
         }
 
         function countNeighbors(row, col) {
@@ -431,6 +709,7 @@
 
             grid = next;
             generation += 1;
+            refreshPatternOverlayIfOpen();
             drawGrid();
             updateStatus();
         }
@@ -441,11 +720,36 @@
             status.textContent = mode + ' | Geracao ' + generation + ' | ' + COLS + ' x ' + ROWS + ' | ' + borderLabel;
         }
 
+        function updatePatternButton() {
+            patternButton.textContent = analysisMode ? 'PAT ON' : 'PAT';
+            patternDetailsButton.hidden = !analysisMode;
+        }
+
+        function updatePatternDetailsButton() {
+            if (!analysisMode) {
+                patternDetailsButton.hidden = true;
+                return;
+            }
+
+            patternDetailsButton.hidden = false;
+            patternDetailsButton.textContent = patternCard.classList.contains('hidden')
+                ? 'PAT details'
+                : 'Hide details';
+        }
+
+        function normalizeGridPosition(row, col) {
+            return [
+                (row + ROWS) % ROWS,
+                (col + COLS) % COLS
+            ];
+        }
+
         function setMenusVisible(visible) {
             uiRoot.classList.toggle('ui-hidden', !visible);
             if (!visible) {
                 topMenuPanel.classList.remove('open');
                 menuPanel.classList.remove('open');
+                hidePatternTextPanel();
             }
         }
 
@@ -495,6 +799,7 @@
         function clearGrid() {
             grid = createGrid();
             generation = 0;
+            refreshPatternOverlayIfOpen();
             drawGrid();
             updateStatus();
         }
@@ -506,6 +811,7 @@
                 }
             }
             generation = 0;
+            refreshPatternOverlayIfOpen();
             drawGrid();
             updateStatus();
         }
@@ -529,6 +835,7 @@
                 }
             }
 
+            refreshPatternOverlayIfOpen();
             drawGrid();
             updateStatus();
         }
@@ -597,6 +904,344 @@
             fullscreenButton.textContent = active ? 'Sair da tela cheia' : 'Tela cheia';
         }
 
+        function getLiveCells(pattern) {
+            const cells = [];
+            for (let row = 0; row < pattern.length; row++) {
+                for (let col = 0; col < pattern[row].length; col++) {
+                    if (pattern[row][col]) {
+                        cells.push([row, col]);
+                    }
+                }
+            }
+            return cells;
+        }
+
+        function trimPattern(pattern) {
+            let minRow = Infinity;
+            let minCol = Infinity;
+            let maxRow = -1;
+            let maxCol = -1;
+
+            for (let row = 0; row < pattern.length; row++) {
+                for (let col = 0; col < pattern[row].length; col++) {
+                    if (!pattern[row][col]) continue;
+                    minRow = Math.min(minRow, row);
+                    minCol = Math.min(minCol, col);
+                    maxRow = Math.max(maxRow, row);
+                    maxCol = Math.max(maxCol, col);
+                }
+            }
+
+            if (maxRow === -1) return [[0]];
+
+            const trimmed = [];
+            for (let row = minRow; row <= maxRow; row++) {
+                const line = [];
+                for (let col = minCol; col <= maxCol; col++) {
+                    line.push(pattern[row][col] ? 1 : 0);
+                }
+                trimmed.push(line);
+            }
+            return trimmed;
+        }
+
+        function rotatePattern(pattern) {
+            const rows = pattern.length;
+            const cols = pattern[0].length;
+            const rotated = Array.from({ length: cols }, () => Array(rows).fill(0));
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    rotated[col][rows - row - 1] = pattern[row][col];
+                }
+            }
+            return rotated;
+        }
+
+        function mirrorPattern(pattern) {
+            return pattern.map((row) => row.slice().reverse());
+        }
+
+        function patternKey(pattern) {
+            return pattern.map((row) => row.join('')).join('/');
+        }
+
+        function simulatePattern(pattern) {
+            const margin = 6;
+            let simRows = pattern.length + margin * 2;
+            let simCols = pattern[0].length + margin * 2;
+            let state = Array.from({ length: simRows }, () => Array(simCols).fill(0));
+
+            for (let row = 0; row < pattern.length; row++) {
+                for (let col = 0; col < pattern[row].length; col++) {
+                    state[row + margin][col + margin] = pattern[row][col] ? 1 : 0;
+                }
+            }
+
+            const next = Array.from({ length: simRows }, () => Array(simCols).fill(0));
+            for (let row = 0; row < simRows; row++) {
+                for (let col = 0; col < simCols; col++) {
+                    let neighbors = 0;
+                    for (let dRow = -1; dRow <= 1; dRow++) {
+                        for (let dCol = -1; dCol <= 1; dCol++) {
+                            if (dRow === 0 && dCol === 0) continue;
+                            const nr = row + dRow;
+                            const nc = col + dCol;
+                            if (nr >= 0 && nr < simRows && nc >= 0 && nc < simCols) {
+                                neighbors += state[nr][nc];
+                            }
+                        }
+                    }
+
+                    if (state[row][col]) {
+                        next[row][col] = neighbors === 2 || neighbors === 3 ? 1 : 0;
+                    } else {
+                        next[row][col] = neighbors === 3 ? 1 : 0;
+                    }
+                }
+            }
+            return next;
+        }
+
+        function buildFamilyVariants(name, basePattern, transformPatterns) {
+            const variants = [];
+            const seen = new Set();
+
+            for (const transformed of transformPatterns) {
+                let current = trimPattern(transformed);
+                for (let phase = 0; phase < 4; phase++) {
+                    const trimmed = trimPattern(current);
+                    const key = name + '|' + phase + '|' + patternKey(trimmed);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        variants.push({
+                            family: name,
+                            phase,
+                            pattern: trimmed,
+                            liveCells: getLiveCells(trimmed),
+                            height: trimmed.length,
+                            width: trimmed[0].length
+                        });
+                    }
+                    current = simulatePattern(current);
+                }
+            }
+
+            return variants;
+        }
+
+        function createPatternFamilies() {
+            const gliderTransforms = [];
+            let gliderPattern = patterns.glider;
+            for (let i = 0; i < 4; i++) {
+                gliderTransforms.push(gliderPattern);
+                gliderPattern = rotatePattern(gliderPattern);
+            }
+
+            return {
+                glider: buildFamilyVariants('Glider', patterns.glider, gliderTransforms),
+                lwss: buildFamilyVariants('LWSS', patterns.lwss, [patterns.lwss, mirrorPattern(patterns.lwss)])
+            };
+        }
+
+        function matchesVariantAt(variant, startRow, startCol) {
+            for (let row = 0; row < variant.height; row++) {
+                for (let col = 0; col < variant.width; col++) {
+                    const expected = variant.pattern[row][col];
+                    let targetRow = startRow + row;
+                    let targetCol = startCol + col;
+
+                    if (wrapBorders) {
+                        [targetRow, targetCol] = normalizeGridPosition(targetRow, targetCol);
+                    } else if (targetRow < 0 || targetRow >= ROWS || targetCol < 0 || targetCol >= COLS) {
+                        return false;
+                    }
+
+                    if (grid[targetRow][targetCol] !== expected) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function buildMatchFootprint(variant, startRow, startCol) {
+            const footprintCells = [];
+            const liveCells = [];
+
+            for (let row = 0; row < variant.height; row++) {
+                for (let col = 0; col < variant.width; col++) {
+                    let targetRow = startRow + row;
+                    let targetCol = startCol + col;
+
+                    if (wrapBorders) {
+                        [targetRow, targetCol] = normalizeGridPosition(targetRow, targetCol);
+                    }
+
+                    footprintCells.push([targetRow, targetCol]);
+                    if (variant.pattern[row][col]) {
+                        liveCells.push([targetRow, targetCol]);
+                    }
+                }
+            }
+
+            return { footprintCells, liveCells };
+        }
+
+        function analyzeCurrentGrid() {
+            const matches = [];
+            const totals = { Glider: 0, LWSS: 0 };
+            const seen = new Set();
+
+            for (const familyName of Object.keys(patternFamilies)) {
+                for (const variant of patternFamilies[familyName]) {
+                    const maxRow = wrapBorders ? ROWS - 1 : ROWS - variant.height;
+                    const maxCol = wrapBorders ? COLS - 1 : COLS - variant.width;
+
+                    for (let row = 0; row <= maxRow; row++) {
+                        for (let col = 0; col <= maxCol; col++) {
+                            if (!matchesVariantAt(variant, row, col)) continue;
+
+                            const footprint = buildMatchFootprint(variant, row, col);
+                            const dedupeKey =
+                                variant.family + '|' +
+                                variant.phase + '|' +
+                                footprint.liveCells
+                                    .map(([r, c]) => r + ':' + c)
+                                    .sort()
+                                    .join(',');
+
+                            if (seen.has(dedupeKey)) continue;
+                            seen.add(dedupeKey);
+
+                            matches.push({
+                                family: variant.family,
+                                phase: variant.phase,
+                                row,
+                                col,
+                                width: variant.width,
+                                height: variant.height,
+                                footprintCells: footprint.footprintCells,
+                                liveCells: footprint.liveCells
+                            });
+                            totals[variant.family] += 1;
+                        }
+                    }
+                }
+            }
+
+            return { matches, totals };
+        }
+
+        function renderPatternAnalysis(analysis) {
+            patternSummary.innerHTML = '';
+            patternList.innerHTML = '';
+
+            const summaryItems = [
+                { label: 'Gliders encontrados', value: analysis.totals.Glider },
+                { label: 'LWSS encontrados', value: analysis.totals.LWSS }
+            ];
+
+            for (const item of summaryItems) {
+                const card = document.createElement('div');
+                card.className = 'pattern-summary-item';
+                const strong = document.createElement('strong');
+                strong.textContent = String(item.value);
+                const span = document.createElement('span');
+                span.textContent = item.label;
+                card.appendChild(strong);
+                card.appendChild(span);
+                patternSummary.appendChild(card);
+            }
+
+            if (!analysis.matches.length) {
+                const empty = document.createElement('div');
+                empty.className = 'pattern-empty';
+                empty.textContent = 'Nenhum glider ou LWSS foi encontrado neste estado do grid.';
+                patternList.appendChild(empty);
+                return;
+            }
+
+            analysis.matches.forEach((match, index) => {
+                const item = document.createElement('div');
+                item.className = 'pattern-entry';
+                const title = document.createElement('strong');
+                title.textContent = match.family + ' #' + (index + 1);
+                const details = document.createElement('span');
+                details.textContent =
+                    'Fase ' + match.phase +
+                    ' | linha ' + (match.row + 1) +
+                    ' | coluna ' + (match.col + 1) +
+                    ' | area ' + match.width + 'x' + match.height;
+                item.appendChild(title);
+                item.appendChild(details);
+                patternList.appendChild(item);
+            });
+        }
+
+        function showPatternTip(match) {
+            patternTipTitle.textContent = match.family + ' | fase ' + match.phase;
+            patternTipBody.textContent =
+                'Linha ' + (match.row + 1) +
+                ' | coluna ' + (match.col + 1) +
+                ' | area ' + match.width + 'x' + match.height;
+            patternTip.classList.add('open');
+        }
+
+        function hidePatternTip() {
+            patternTip.classList.remove('open');
+        }
+
+        function showPatternTextPanel() {
+            patternModal.classList.add('open');
+            patternCard.classList.remove('hidden');
+            updatePatternDetailsButton();
+        }
+
+        function hidePatternTextPanel() {
+            patternCard.classList.add('hidden');
+            hidePatternTip();
+            updatePatternDetailsButton();
+        }
+
+        function setAnalysisMode(enabled) {
+            analysisMode = enabled;
+            uiRoot.classList.toggle('analysis-mode', enabled);
+            updatePatternButton();
+
+            if (!enabled) {
+                patternModal.classList.remove('open');
+                patternCard.classList.add('hidden');
+                patternOverlay = null;
+                hidePatternTip();
+                updatePatternDetailsButton();
+                drawGrid();
+                return;
+            }
+
+            patternOverlay = analyzeCurrentGrid();
+            renderPatternAnalysis(patternOverlay);
+            showPatternTextPanel();
+            hidePatternTip();
+            updatePatternDetailsButton();
+            drawGrid();
+        }
+
+        function refreshPatternOverlayIfOpen() {
+            if (!analysisMode) return;
+            patternOverlay = analyzeCurrentGrid();
+            renderPatternAnalysis(patternOverlay);
+            hidePatternTip();
+        }
+
+        function findPatternAtCell(row, col) {
+            if (!analysisMode || !patternOverlay) return null;
+
+            return patternOverlay.matches.find((match) =>
+                match.footprintCells.some(([cellRow, cellCol]) => cellRow === row && cellCol === col)
+            ) || null;
+        }
+
         async function toggleFullscreen() {
             try {
                 if (document.fullscreenElement) {
@@ -649,6 +1294,8 @@
             ]
         };
 
+        const patternFamilies = createPatternFamilies();
+
         canvas.addEventListener('click', (event) => {
             if (longPressActive) {
                 longPressActive = false;
@@ -662,8 +1309,25 @@
             const col = Math.floor(x / cellWidth);
             const row = Math.floor(y / cellHeight);
 
+            if (analysisMode) {
+                const found = findPatternAtCell(row, col);
+                if (found) {
+                    showPatternTip(found);
+                    return;
+                }
+
+                if (!patternCard.classList.contains('hidden')) {
+                    hidePatternTextPanel();
+                    return;
+                }
+
+                hidePatternTip();
+                return;
+            }
+
             if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
                 grid[row][col] = grid[row][col] ? 0 : 1;
+                refreshPatternOverlayIfOpen();
                 drawGrid();
             }
         });
@@ -726,7 +1390,20 @@
         });
 
         document.getElementById('btn-play').addEventListener('click', toggleRun);
+        patternButton.addEventListener('click', () => {
+            setAnalysisMode(!analysisMode);
+        });
+        patternDetailsButton.addEventListener('click', () => {
+            if (!analysisMode) return;
+            if (patternCard.classList.contains('hidden')) {
+                showPatternTextPanel();
+                hidePatternTip();
+            } else {
+                hidePatternTextPanel();
+            }
+        });
         floatingStepButton.addEventListener('click', stepOnce);
+        patternCloseButton.addEventListener('click', hidePatternTextPanel);
         document.getElementById('btn-glider').addEventListener('click', () => injectPattern(patterns.glider));
         document.getElementById('btn-lwss').addEventListener('click', () => injectPattern(patterns.lwss));
         document.getElementById('btn-copperhead').addEventListener('click', () => injectPattern(patterns.copperhead));
@@ -755,6 +1432,11 @@
             injectPattern(pattern);
         });
         installAppButton.addEventListener('click', installApp);
+        patternModal.addEventListener('click', (event) => {
+            if (event.target === patternModal) {
+                hidePatternTextPanel();
+            }
+        });
 
         window.addEventListener('resize', resizeCanvas);
         document.addEventListener('fullscreenchange', updateFullscreenBtn);
@@ -783,6 +1465,8 @@
         updatePlayPauseBtn();
         updateBorderBtn();
         updateFullscreenBtn();
+        updatePatternButton();
+        updatePatternDetailsButton();
         updateStatus();
     </script>
 </body>
