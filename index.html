@@ -66,9 +66,19 @@
         }
 
         .top-menu,
-        .menu {
+        .menu,
+        .step-control {
             position: fixed;
             z-index: 10;
+            transition: opacity 180ms ease;
+        }
+
+        .ui-hidden .top-menu,
+        .ui-hidden .menu,
+        .ui-hidden .step-control,
+        .ui-hidden .hud {
+            opacity: 0;
+            pointer-events: none;
         }
 
         .top-menu {
@@ -81,35 +91,51 @@
             bottom: calc(12px + env(safe-area-inset-bottom, 0px));
         }
 
+        .step-control {
+            right: calc(12px + env(safe-area-inset-right, 0px));
+            bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        }
+
         .menu-toggle {
-            width: 46px;
-            height: 46px;
+            width: 58px;
+            height: 58px;
             border: 1px solid var(--line);
             border-radius: 50%;
             background: var(--panel-strong);
             color: var(--text);
-            font-size: 1.1rem;
+            font-size: 1.25rem;
             cursor: pointer;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
         }
 
         .menu-panel {
             display: none;
-            margin-top: 10px;
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 10px);
             padding: 12px;
             min-width: 180px;
-            max-width: min(72vw, 260px);
+            max-width: min(76vw, 280px);
+            max-height: min(58vh, 420px);
             border: 1px solid var(--line);
             border-radius: 12px;
             background: var(--panel);
             backdrop-filter: blur(12px);
             box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+            overflow-y: auto;
         }
 
         .menu-panel.open {
             display: flex;
             flex-direction: column;
             gap: 8px;
+        }
+
+        #top-menu-panel {
+            top: calc(100% + 10px);
+            bottom: auto;
+            left: auto;
+            right: 0;
         }
 
         .menu-panel button {
@@ -121,6 +147,19 @@
             text-align: left;
             cursor: pointer;
             font-size: 0.95rem;
+        }
+
+        .step-button {
+            width: 64px;
+            height: 64px;
+            border: 1px solid rgba(125, 211, 167, 0.24);
+            border-radius: 50%;
+            background: rgba(125, 211, 167, 0.14);
+            color: var(--text);
+            font-size: 2rem;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
         }
 
         .menu-panel button:hover {
@@ -191,20 +230,28 @@
             }
 
             .menu-toggle {
-                width: 42px;
-                height: 42px;
-                font-size: 1rem;
+                width: 54px;
+                height: 54px;
+                font-size: 1.15rem;
             }
 
             .menu-panel {
                 gap: 6px;
                 padding: 10px;
-                min-width: 158px;
+                min-width: 176px;
+                max-width: min(74vw, 240px);
+                max-height: min(56vh, 360px);
             }
 
             .menu-panel button {
                 padding: 8px 10px;
                 font-size: 0.85rem;
+            }
+
+            .step-button {
+                width: 60px;
+                height: 60px;
+                font-size: 1.85rem;
             }
 
             .overlay-card h1 {
@@ -243,7 +290,6 @@
         <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu inferior">☰</button>
         <div class="menu-panel" id="menu-panel">
             <button id="btn-play">Iniciar</button>
-            <button id="btn-step">Avancar 1 geracao</button>
             <button id="btn-glider">Inserir glider</button>
             <button id="btn-lwss">Inserir lwss</button>
             <button id="btn-copperhead">Inserir copperhead</button>
@@ -256,6 +302,10 @@
             <button id="btn-invert">Inverter cores</button>
             <button id="btn-border">Borda ligada</button>
         </div>
+    </div>
+
+    <div class="step-control">
+        <button class="step-button" id="btn-step-floating" aria-label="Avancar uma geracao">&gt;</button>
     </div>
 
     <script>
@@ -280,6 +330,10 @@
         const mainContent = document.getElementById('main-content');
         const installAppButton = document.getElementById('install-app');
         const fullscreenButton = document.getElementById('btn-fullscreen');
+        const uiRoot = document.body;
+        const floatingStepButton = document.getElementById('btn-step-floating');
+        let longPressTimer = null;
+        let longPressActive = false;
 
         function createGrid() {
             return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
@@ -385,6 +439,18 @@
             const mode = running ? 'Rodando' : 'Pausado';
             const borderLabel = wrapBorders ? 'Borda ligada' : 'Borda desligada';
             status.textContent = mode + ' | Geracao ' + generation + ' | ' + COLS + ' x ' + ROWS + ' | ' + borderLabel;
+        }
+
+        function setMenusVisible(visible) {
+            uiRoot.classList.toggle('ui-hidden', !visible);
+            if (!visible) {
+                topMenuPanel.classList.remove('open');
+                menuPanel.classList.remove('open');
+            }
+        }
+
+        function toggleMenusVisible() {
+            setMenusVisible(uiRoot.classList.contains('ui-hidden'));
         }
 
         function start() {
@@ -584,6 +650,11 @@
         };
 
         canvas.addEventListener('click', (event) => {
+            if (longPressActive) {
+                longPressActive = false;
+                return;
+            }
+
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
@@ -597,12 +668,37 @@
             }
         });
 
+        function clearLongPressTimer() {
+            if (longPressTimer !== null) {
+                window.clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        }
+
+        function beginLongPress(event) {
+            if (event.target !== canvas) return;
+
+            clearLongPressTimer();
+            longPressActive = false;
+            longPressTimer = window.setTimeout(() => {
+                longPressActive = true;
+                toggleMenusVisible();
+            }, 520);
+        }
+
+        canvas.addEventListener('pointerdown', beginLongPress);
+        canvas.addEventListener('pointerup', clearLongPressTimer);
+        canvas.addEventListener('pointerleave', clearLongPressTimer);
+        canvas.addEventListener('pointercancel', clearLongPressTimer);
+
         document.addEventListener('keydown', (event) => {
             if (event.key === ' ') {
                 event.preventDefault();
                 toggleRun();
             } else if (event.key === 'n' || event.key === 'N') {
                 stepOnce();
+            } else if (event.key === 'm' || event.key === 'M') {
+                toggleMenusVisible();
             }
         });
 
@@ -630,7 +726,7 @@
         });
 
         document.getElementById('btn-play').addEventListener('click', toggleRun);
-        document.getElementById('btn-step').addEventListener('click', stepOnce);
+        floatingStepButton.addEventListener('click', stepOnce);
         document.getElementById('btn-glider').addEventListener('click', () => injectPattern(patterns.glider));
         document.getElementById('btn-lwss').addEventListener('click', () => injectPattern(patterns.lwss));
         document.getElementById('btn-copperhead').addEventListener('click', () => injectPattern(patterns.copperhead));
