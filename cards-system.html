@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <meta charset="UTF-8">
+    <title>Conway Card Generator</title>
+
+    <style>
+        :root {
+            --card-width-mm: 63.5;
+            --card-height-mm: 88;
+        }
+
+        body {
+            margin: 0;
+            background: #1a1a1a;
+            font-family: Inter, Arial, Helvetica, sans-serif;
+        }
+
+        .toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+
+            display: flex;
+            gap: 10px;
+
+            padding: 12px;
+
+            background: #111;
+            border-bottom: 1px solid #333;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 10px;
+
+            background: #2b2b2b;
+            color: white;
+
+            cursor: pointer;
+            font-size: 14px;
+
+            transition: 0.2s;
+        }
+
+        .crop-mark {
+
+            position: absolute;
+
+            background: #000;
+
+            opacity: 0.55;
+        }
+
+        button:hover {
+            background: #444;
+        }
+
+        #pages {
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+
+            gap: 24px;
+
+            padding: 24px;
+        }
+
+        .page {
+
+            width: 210mm;
+            height: 297mm;
+
+            background: white;
+
+            position: relative;
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(3, 63.5mm);
+
+            grid-template-rows:
+                repeat(3, 88mm);
+
+            justify-content: center;
+
+            align-content: center;
+
+            column-gap: 6mm;
+            row-gap: 6mm;
+
+            box-sizing: border-box;
+
+            overflow: hidden;
+        }
+
+        .card {
+
+            width: 63.5mm;
+            height: 88mm;
+
+            position: relative;
+
+            background: white;
+
+            box-sizing: border-box;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-inner {
+
+            width: 58.5mm;
+            height: 83mm;
+
+            border-radius: 4mm;
+
+            overflow: hidden;
+
+            border: 1.5px solid #222;
+
+            box-shadow:
+                0 3px 10px rgba(0, 0, 0, 0.15);
+
+            background: white;
+
+            display: flex;
+            flex-direction: column;
+
+            box-sizing: border-box;
+
+            position: relative;
+        }
+
+        .card-header {
+
+            height: 18mm;
+
+            min-height: 18mm;
+            max-height: 18mm;
+
+            background: #111;
+            color: white;
+
+            padding: 4mm;
+
+            box-sizing: border-box;
+
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .card-title-row {
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            gap: 3mm;
+        }
+
+        .card-title {
+
+            font-size: 5mm;
+            font-weight: bold;
+
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-direction {
+
+            font-size: 4.8mm;
+
+            flex-shrink: 0;
+
+            line-height: 1;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            min-width: 6mm;
+
+            opacity: 0.95;
+        }
+
+        .card-footer-icon {
+
+            font-size: 4mm;
+
+            line-height: 1;
+
+            opacity: 0.9;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            min-width: 5mm;
+        }
+
+        .card-sub {
+
+            margin-top: 1mm;
+
+            font-size: 3mm;
+
+            opacity: 0.8;
+        }
+
+        .card-grid {
+
+            flex: 1;
+
+            min-height: 0;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            padding: 2.5mm;
+
+            box-sizing: border-box;
+
+            overflow: hidden;
+        }
+
+        .card-footer {
+
+            height: 6mm;
+
+            min-height: 6mm;
+            max-height: 6mm;
+
+            border-top: 1px solid #ddd;
+
+            padding: 1mm 4mm;
+
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+
+            box-sizing: border-box;
+
+            font-size: 2.8mm;
+
+            overflow: hidden;
+        }
+
+        .pattern-svg {
+
+            width: 100%;
+            height: 100%;
+
+            object-fit: contain;
+        }
+
+        .badge {
+
+            position: absolute;
+
+            top: 4mm;
+            right: 4mm;
+
+            background: white;
+            color: #111;
+
+            border-radius: 999px;
+
+            min-width: 10mm;
+
+            text-align: center;
+
+            padding: 1mm 2mm;
+
+            font-size: 2.5mm;
+            font-weight: bold;
+        }
+
+        @media print {
+
+            body {
+                background: white;
+            }
+
+            .toolbar {
+                display: none;
+            }
+
+            #pages {
+                padding: 0;
+                gap: 0;
+            }
+
+            .page {
+                page-break-after: always;
+            }
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div class="toolbar">
+
+        <button onclick="generateCards()">
+            Regenerate
+        </button>
+
+        <button onclick="downloadGeneratedJson()">
+            Download JSON
+        </button>
+
+        <button onclick="exportPdf()">
+            Export PDF
+        </button>
+    </div>
+
+    <div id="pages"></div>
+
+    <script>
+
+        let patternsData = null;
+
+        async function loadJson() {
+
+            const response =
+                await fetch("./cards.json");
+
+            patternsData =
+                await response.json();
+
+            generateCards();
+        }
+
+        function cloneGrid(grid) {
+
+            return grid.map(r => [...r]);
+        }
+
+        function mirrorPattern(pattern) {
+
+            return pattern.map(
+                row => [...row].reverse()
+            );
+        }
+
+        function trimPattern(pattern) {
+
+            let minRow = Infinity;
+            let minCol = Infinity;
+
+            let maxRow = -1;
+            let maxCol = -1;
+
+            for (let r = 0; r < pattern.length; r++) {
+
+                for (let c = 0; c < pattern[0].length; c++) {
+
+                    if (pattern[r][c]) {
+
+                        minRow = Math.min(minRow, r);
+                        minCol = Math.min(minCol, c);
+
+                        maxRow = Math.max(maxRow, r);
+                        maxCol = Math.max(maxCol, c);
+                    }
+                }
+            }
+
+            if (maxRow === -1) {
+
+                return [[0]];
+            }
+
+            const out = [];
+
+            for (let r = minRow; r <= maxRow; r++) {
+
+                const row = [];
+
+                for (let c = minCol; c <= maxCol; c++) {
+
+                    row.push(
+                        pattern[r][c]
+                    );
+                }
+
+                out.push(row);
+            }
+
+            return out;
+        }
+
+        function nextGeneration(pattern) {
+
+            const margin = 6;
+
+            const rows =
+                pattern.length + margin * 2;
+
+            const cols =
+                pattern[0].length + margin * 2;
+
+            const grid =
+                Array.from(
+                    { length: rows },
+                    () => Array(cols).fill(0)
+                );
+
+            for (let r = 0; r < pattern.length; r++) {
+
+                for (let c = 0; c < pattern[0].length; c++) {
+
+                    grid[
+                        r + margin
+                    ][
+                        c + margin
+                    ] = pattern[r][c];
+                }
+            }
+
+            const next =
+                Array.from(
+                    { length: rows },
+                    () => Array(cols).fill(0)
+                );
+
+            function count(r, c) {
+
+                let n = 0;
+
+                for (let dr = -1; dr <= 1; dr++) {
+
+                    for (let dc = -1; dc <= 1; dc++) {
+
+                        if (dr === 0 && dc === 0)
+                            continue;
+
+                        const rr = r + dr;
+                        const cc = c + dc;
+
+                        if (
+                            rr >= 0 &&
+                            rr < rows &&
+                            cc >= 0 &&
+                            cc < cols
+                        ) {
+                            n += grid[rr][cc];
+                        }
+                    }
+                }
+
+                return n;
+            }
+
+            for (let r = 0; r < rows; r++) {
+
+                for (let c = 0; c < cols; c++) {
+
+                    const neighbors =
+                        count(r, c);
+
+                    if (grid[r][c]) {
+
+                        next[r][c] =
+                            (
+                                neighbors === 2 ||
+                                neighbors === 3
+                            ) ? 1 : 0;
+
+                    } else {
+
+                        next[r][c] =
+                            neighbors === 3
+                                ? 1
+                                : 0;
+                    }
+                }
+            }
+
+            return trimPattern(next);
+        }
+
+        function buildSvg(pattern) {
+
+            const GRID = 7;
+
+            const cell = 24;
+
+            const width = GRID * cell;
+            const height = GRID * cell;
+
+            const rows = pattern.length;
+            const cols = pattern[0].length;
+
+            const offsetX =
+                Math.floor((GRID - cols) / 2);
+
+            const offsetY =
+                Math.floor((GRID - rows) / 2);
+
+            let svg = `
+    <svg
+        class="pattern-svg"
+        viewBox="0 0 ${width} ${height}"
+        xmlns="http://www.w3.org/2000/svg"
+    >
+    `;
+
+            for (let r = 0; r < GRID; r++) {
+
+                for (let c = 0; c < GRID; c++) {
+
+                    svg += `
+            <rect
+                x="${c * cell}"
+                y="${r * cell}"
+                width="${cell}"
+                height="${cell}"
+                fill="#fff"
+                stroke="#777"
+                stroke-width="1"
+            />
+            `;
+                }
+            }
+
+            for (let r = 0; r < rows; r++) {
+
+                for (let c = 0; c < cols; c++) {
+
+                    if (pattern[r][c]) {
+
+                        const x =
+                            (c + offsetX) * cell;
+
+                        const y =
+                            (r + offsetY) * cell;
+
+                        svg += `
+                <rect
+                    x="${x + 3}"
+                    y="${y + 3}"
+                    width="${cell - 6}"
+                    height="${cell - 6}"
+                    fill="#111"
+                    rx="6"
+                />
+                `;
+                    }
+                }
+            }
+
+            svg += "</svg>";
+
+            return svg;
+        }
+
+        function generateDeck() {
+
+            const cards = [];
+
+            const patterns =
+                patternsData.patterns;
+
+            for (const key in patterns) {
+
+                const def = patterns[key];
+
+                let variants = [
+                    {
+                        pattern: cloneGrid(def.pattern),
+                        mirrored: false
+                    }
+                ];
+
+                if (def.mirrors) {
+
+                    variants.push({
+
+                        pattern:
+                            mirrorPattern(
+                                cloneGrid(def.pattern)
+                            ),
+
+                        mirrored: true
+                    });
+                }
+
+                variants.forEach(
+                    (variantData) => {
+
+                        const variant =
+                            variantData.pattern;
+
+                        let phasePattern =
+                            cloneGrid(variant);
+
+                        for (
+                            let phase = 0;
+                            phase < def.phaseCount;
+                            phase++
+                        ) {
+
+                            cards.push({
+
+                                id:
+                                    key +
+                                    "_p" +
+                                    phase +
+                                    (
+                                        variantData.mirrored
+                                            ? "_mirror"
+                                            : ""
+                                    ),
+
+                                family: key,
+                                icon: def.icon,
+                                mirroredIcon: def.mirroredIcon,
+
+                                name: def.name,
+
+                                category: def.category,
+
+                                phase: phase + 1,
+
+                                phaseTotal: def.phaseCount,
+
+                                mirrored:
+                                    variantData.mirrored,
+
+                                points: def.points,
+
+                                pattern:
+                                    cloneGrid(
+                                        phasePattern
+                                    ),
+
+                                svg:
+                                    buildSvg(
+                                        phasePattern
+                                    )
+
+                            });
+
+                            phasePattern =
+                                nextGeneration(
+                                    phasePattern
+                                );
+                        }
+                    });
+            }
+
+            return cards;
+        }
+
+
+        function createCard(card) {
+
+            const div =
+                document.createElement("div");
+
+            div.className = "card";
+
+            div.innerHTML = `
+
+<div class="card-inner">
+
+    <div class="badge">
+        ${card.points > 0
+                    ? `${card.points} pts`
+                    : "&nbsp;"
+                }
+    </div>
+
+    <div class="card-header">
+
+        <div class="card-title-row">
+
+            <div class="card-title">
+                ${card.name}
+            </div>
+
+
+
+        </div>
+
+        <div class="card-sub">
+            ${card.category}
+        </div>
+
+    </div>
+
+    <div class="card-grid">
+        ${card.svg}
+    </div>
+
+<div class="card-footer">
+
+    <div>
+        ${card.phase}/${card.phaseTotal}
+    </div>
+
+    <div class="card-footer-icon">
+
+${card.mirrored
+                    ? (
+                        card.mirroredIcon ||
+                        card.icon ||
+                        ""
+                    )
+                    : (
+                        card.icon || ""
+                    )
+                }
+
+    </div>
+
+</div>
+</div>
+`;
+
+            return div;
+        }
+
+        function generateCards() {
+
+            const cards =
+                generateDeck();
+
+            window.generatedCards =
+                cards;
+
+            const pages =
+                document.getElementById(
+                    "pages"
+                );
+
+            pages.innerHTML = "";
+
+            let page = null;
+
+            cards.forEach((card, index) => {
+
+                if (index % 9 === 0) {
+
+                    page =
+                        document.createElement(
+                            "div"
+                        );
+
+                    page.className = "page";
+
+                    pages.appendChild(page);
+                    addCropMarks(page);
+                }
+
+                page.appendChild(
+                    createCard(card)
+                );
+            });
+
+            requestAnimationFrame(() => {
+
+                document
+                    .querySelectorAll(".page")
+                    .forEach(addCropMarks);
+            });
+
+            console.log(
+                "Generated cards:",
+                cards
+            );
+        }
+
+        function downloadGeneratedJson() {
+
+            const data =
+                JSON.stringify(
+                    window.generatedCards,
+                    null,
+                    2
+                );
+
+            const blob =
+                new Blob(
+                    [data],
+                    {
+                        type: "application/json"
+                    }
+                );
+
+            const url =
+                URL.createObjectURL(blob);
+
+            const a =
+                document.createElement("a");
+
+            a.href = url;
+
+            a.download =
+                "generated-cards.json";
+
+            a.click();
+
+            URL.revokeObjectURL(url);
+        }
+
+
+        function addCropMarks(page) {
+
+            const cards =
+                [...page.querySelectorAll(".card")];
+
+            cards.forEach(card => {
+
+                const rect =
+                    card.getBoundingClientRect();
+
+                const pageRect =
+                    page.getBoundingClientRect();
+
+                const x =
+                    rect.left - pageRect.left;
+
+                const y =
+                    rect.top - pageRect.top;
+
+                const w =
+                    rect.width;
+
+                const h =
+                    rect.height;
+
+                const offset = 3;
+                const size = 5;
+                const thick = 1;
+
+                const marks = [
+
+                    // TOP LEFT
+                    {
+                        x: x - offset,
+                        y: y,
+                        w: size,
+                        h: thick
+                    },
+
+                    {
+                        x: x,
+                        y: y - offset,
+                        w: thick,
+                        h: size
+                    },
+
+                    // TOP RIGHT
+                    {
+                        x: x + w - size + offset,
+                        y: y,
+                        w: size,
+                        h: thick
+                    },
+
+                    {
+                        x: x + w,
+                        y: y - offset,
+                        w: thick,
+                        h: size
+                    },
+
+                    // BOTTOM LEFT
+                    {
+                        x: x - offset,
+                        y: y + h,
+                        w: size,
+                        h: thick
+                    },
+
+                    {
+                        x: x,
+                        y: y + h - size + offset,
+                        w: thick,
+                        h: size
+                    },
+
+                    // BOTTOM RIGHT
+                    {
+                        x: x + w - size + offset,
+                        y: y + h,
+                        w: size,
+                        h: thick
+                    },
+
+                    {
+                        x: x + w,
+                        y: y + h - size + offset,
+                        w: thick,
+                        h: size
+                    }
+                ];
+
+                marks.forEach(m => {
+
+                    const div =
+                        document.createElement("div");
+
+                    div.className =
+                        "crop-mark";
+
+                    div.style.left =
+                        m.x + "px";
+
+                    div.style.top =
+                        m.y + "px";
+
+                    div.style.width =
+                        m.w + "px";
+
+                    div.style.height =
+                        m.h + "px";
+
+                    page.appendChild(div);
+                });
+            });
+        }
+        async function exportPdf() {
+
+            const {
+                jsPDF
+            } = window.jspdf;
+
+            const pdf =
+                new jsPDF({
+
+                    orientation: "portrait",
+
+                    unit: "mm",
+
+                    format: "a4",
+
+                    compress: true
+                });
+
+            const pages =
+                document.querySelectorAll(
+                    ".page"
+                );
+
+            for (
+                let i = 0;
+                i < pages.length;
+                i++
+            ) {
+
+                const page =
+                    pages[i];
+
+                const canvas =
+                    await html2canvas(
+                        page,
+                        {
+                            scale: 3,
+                            useCORS: true,
+                            backgroundColor: "#ffffff"
+                        }
+                    );
+
+                const img =
+                    canvas.toDataURL(
+                        "image/png"
+                    );
+
+                if (i > 0) {
+
+                    pdf.addPage();
+                }
+
+                pdf.addImage(
+
+                    img,
+
+                    "PNG",
+
+                    0,
+
+                    0,
+
+                    210,
+
+                    297
+                );
+            }
+
+            pdf.save(
+                "conway-cards.pdf"
+            );
+        }
+        loadJson();
+
+    </script>
+
+</body>
+
+</html>

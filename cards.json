@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "name": "Conway Card Game",
+    "version": "0.2",
+    "cardWidthMm": 63.5,
+    "cardHeightMm": 88,
+    "author": "Generated Deck"
+  },
+
+  "patterns": {
+
+    "glider": {
+      "name": "Glider",
+      "category": "Spaceship",
+      "phaseCount": 4,
+
+      "mirrors": true,
+
+      "points": 0,
+
+      "icon": "↘",
+      "mirroredIcon": "↙",
+
+      "pattern": [
+        [0,1,0],
+        [0,0,1],
+        [1,1,1]
+      ]
+    },
+
+    "lwss": {
+      "name": "LWSS",
+      "category": "Spaceship",
+      "phaseCount": 4,
+
+      "mirrors": true,
+
+      "points": 0,
+
+      "icon": "←",
+      "mirroredIcon": "→",
+
+      "pattern": [
+        [0,1,0,0,1],
+        [1,0,0,0,0],
+        [1,0,0,0,1],
+        [1,1,1,1,0]
+      ]
+    },
+
+    "blinker": {
+      "name": "Blinker",
+      "category": "Oscillator",
+      "phaseCount": 2,
+
+      "mirrors": false,
+
+      "points": 0,
+
+      "icon": "⥁",
+
+      "pattern": [
+        [1,1,1]
+      ]
+    },
+
+    "beacon": {
+      "name": "Beacon",
+      "category": "Oscillator",
+      "phaseCount": 2,
+
+      "mirrors": true,
+
+      "points": 0,
+
+      "icon": "⥀",
+      "mirroredIcon": "⥁",
+
+      "pattern": [
+        [1,1,0,0],
+        [1,1,0,0],
+        [0,0,1,1],
+        [0,0,1,1]
+      ]
+    },
+
+    "block": {
+      "name": "Block",
+      "category": "Still Life",
+      "phaseCount": 1,
+
+      "mirrors": false,
+
+      "points": 0,
+
+      "icon": "⬡",
+
+      "pattern": [
+        [1,1],
+        [1,1]
+      ]
+    },
+
+    "boat": {
+      "name": "Boat",
+      "category": "Still Life",
+      "phaseCount": 1,
+
+      "mirrors": true,
+
+      "points": 0,
+
+      "icon": "←⬡",
+      "mirroredIcon": "⬡→",
+
+      "pattern": [
+        [1,1,0],
+        [1,0,1],
+        [0,1,0]
+      ]
+    },
+
+    "tub": {
+      "name": "Tub",
+      "category": "Still Life",
+      "phaseCount": 1,
+
+      "mirrors": false,
+
+      "points": 0,
+
+      "icon": "⬡",
+
+      "pattern": [
+        [0,1,0],
+        [1,0,1],
+        [0,1,0]
+      ]
+    },
+
+    "toad": {
+      "name": "Toad",
+      "category": "Oscillator",
+      "phaseCount": 2,
+
+      "mirrors": true,
+
+      "points": 0,
+
+      "icon": "⥁",
+      "mirroredIcon": "⥀",
+
+      "pattern": [
+        [0,1,1,1],
+        [1,1,1,0]
+      ]
+    }
+
+  }
+}
