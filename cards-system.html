@@ -272,7 +272,7 @@
             width: 100%;
             height: 100%;
 
-            object-fit: contain;
+            display: block;
         }
 
         .badge {
@@ -295,6 +295,139 @@
 
             font-size: 2.5mm;
             font-weight: bold;
+        }
+
+        .cheat-card {
+
+            width: 63.5mm;
+            height: 88mm;
+
+            background: white;
+
+            position: relative;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cheat-inner {
+
+            width: 58.5mm;
+            height: 83mm;
+
+            border-radius: 4mm;
+
+            overflow: hidden;
+
+            border: 1.5px solid #222;
+
+            background: white;
+
+            box-shadow:
+                0 3px 10px rgba(0, 0, 0, 0.15);
+
+            display: flex;
+            flex-direction: column;
+        }
+
+        .cheat-header {
+
+            background: #111;
+            color: white;
+
+            padding: 3mm;
+
+            font-size: 5mm;
+            font-weight: 700;
+        }
+
+        .cheat-content {
+
+            flex: 1;
+
+            padding: 2mm;
+
+            display: grid;
+
+            grid-template-columns: 1fr 1fr;
+
+            gap: 2mm;
+
+            overflow: hidden;
+
+            box-sizing: border-box;
+        }
+
+        .cheat-row {
+
+            border: 1px solid #ddd;
+
+            border-radius: 2mm;
+
+            padding: 0.8mm;
+
+            display: flex;
+            flex-direction: column;
+
+            gap: 0.5mm;
+            overflow: hidden;
+
+            min-height: 0;
+        }
+
+        .cheat-row-title {
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            font-size: 2.2mm;
+            font-weight: 700;
+
+            line-height: 1;
+
+            min-height: 2.5mm;
+        }
+
+        .cheat-sequence {
+
+            display: flex;
+            flex-direction: column;
+
+            align-items: center;
+            justify-content: center;
+
+            gap: 0.4mm;
+
+            flex: 1;
+        }
+
+        .cheat-arrow {
+
+            font-size: 2.5mm;
+
+            opacity: 0.7;
+
+            line-height: 1;
+        }
+
+        .cheat-column {
+
+            display: flex;
+            flex-direction: column;
+
+            gap: 2mm;
+
+            min-height: 0;
+        }
+
+        .mini-grid {
+
+            width: 10mm;
+            height: 10mm;
+
+            flex-shrink: 0;
         }
 
         @media print {
@@ -334,6 +467,10 @@
 
         <button onclick="exportPdf()">
             Export PDF
+        </button>
+
+        <button onclick="generateCheatSheets()">
+            Generate Cheat Sheets
         </button>
     </div>
 
@@ -744,6 +881,272 @@ ${card.mirrored
 
             return div;
         }
+        function buildMiniSvg(pattern) {
+
+            const rows = pattern.length;
+            const cols = pattern[0].length;
+
+            const cell = 12;
+
+            const width = cols * cell;
+            const height = rows * cell;
+
+            let svg = `
+    <svg
+        class="mini-grid"
+        viewBox="0 0 ${width} ${height}"
+        xmlns="http://www.w3.org/2000/svg"
+    >
+    `;
+
+            for (let r = 0; r < rows; r++) {
+
+                for (let c = 0; c < cols; c++) {
+
+                    svg += `
+            <rect
+                x="${c * cell}"
+                y="${r * cell}"
+                width="${cell}"
+                height="${cell}"
+                fill="#fff"
+                stroke="#777"
+                stroke-width="1"
+            />
+            `;
+
+                    if (pattern[r][c]) {
+
+                        svg += `
+                <rect
+                    x="${c * cell + 1.5}"
+                    y="${r * cell + 1.5}"
+                    width="${cell - 3}"
+                    height="${cell - 3}"
+                    fill="#111"
+                    rx="2"
+                />
+                `;
+                    }
+                }
+            }
+
+            svg += "</svg>";
+
+            return svg;
+        }
+        function generateCheatSheets() {
+
+            const patterns =
+                patternsData.patterns;
+
+            const pages =
+                document.getElementById("pages");
+
+            const cheatPage =
+                document.createElement("div");
+
+            cheatPage.className = "page";
+
+            pages.appendChild(cheatPage);
+
+            const cardsPerPage = 9;
+
+            let currentCard = null;
+            let currentContent = null;
+            let columnUsage = [0, 0];
+
+            function newCard() {
+
+                const card =
+                    document.createElement("div");
+
+                card.className = "cheat-card";
+
+                card.innerHTML = `
+        <div class="cheat-inner">
+
+            <div class="cheat-header">
+                Cheat Sheet
+            </div>
+
+           <div class="cheat-content">
+
+    <div class="cheat-column"></div>
+
+    <div class="cheat-column"></div>
+
+</div>
+
+        </div>
+        `;
+
+                cheatPage.appendChild(card);
+
+                currentContent =
+                    [
+                        ...card.querySelectorAll(
+                            ".cheat-column"
+                        )
+                    ];
+
+                currentCard = card;
+
+                columnUsage = [0, 0];
+            }
+
+            newCard();
+
+            for (const key in patterns) {
+
+                const def = patterns[key];
+
+                const variants = [
+                    {
+                        mirrored: false,
+                        icon: def.icon,
+                        pattern: def.pattern
+                    }
+                ];
+
+                if (def.mirrors) {
+
+                    variants.push({
+                        mirrored: true,
+                        icon:
+                            def.mirroredIcon ||
+                            def.icon,
+                        pattern:
+                            mirrorPattern(
+                                cloneGrid(def.pattern)
+                            )
+                    });
+                }
+
+                variants.forEach(variant => {
+
+                    const neededUnits =
+                        def.phaseCount;
+
+                    let targetColumn = -1;
+
+                    // tenta encontrar coluna com espaço
+
+                    for (let c = 0; c < 2; c++) {
+
+                        if (
+                            columnUsage[c] +
+                            neededUnits <= 4
+                        ) {
+
+                            targetColumn = c;
+                            break;
+                        }
+                    }
+
+                    // nenhuma coluna coube
+                    // cria nova carta
+
+                    if (targetColumn === -1) {
+
+                        if (
+                            cheatPage.children.length %
+                            cardsPerPage === 0
+                        ) {
+
+                            const nextPage =
+                                document.createElement("div");
+
+                            nextPage.className =
+                                "page";
+
+                            pages.appendChild(nextPage);
+
+                            cheatPage = nextPage;
+                        }
+
+                        newCard();
+
+                        targetColumn = 0;
+                    }
+
+                    columnUsage[targetColumn] +=
+                        neededUnits;
+                    const row =
+                        document.createElement("div");
+
+                    row.className = "cheat-row";
+
+                    row.style.flex =
+                        neededUnits;
+
+                    let sequence = "";
+
+                    let current =
+                        cloneGrid(
+                            variant.pattern
+                        );
+
+                    for (
+                        let i = 0;
+                        i < def.phaseCount;
+                        i++
+                    ) {
+
+                        sequence +=
+                            buildMiniSvg(current);
+
+                        if (
+                            i <
+                            def.phaseCount - 1
+                        ) {
+
+                            sequence += `
+        <div class="cheat-arrow">
+            ↓
+        </div>
+        `;
+                        }
+
+                        current =
+                            nextGeneration(
+                                current
+                            );
+                    }
+
+                    row.innerHTML = `
+
+<div class="cheat-row-title">
+
+    <div>
+        ${def.name}
+    </div>
+
+    <div>
+        ${variant.icon}
+    </div>
+
+</div>
+
+<div class="cheat-sequence">
+    ${sequence}
+</div>
+`;
+
+                    currentContent[
+                        targetColumn
+                    ].appendChild(row);
+
+                });
+            }
+
+            requestAnimationFrame(() => {
+
+                document
+                    .querySelectorAll(".page")
+                    .forEach(addCropMarks);
+            });
+        }
 
         function generateCards() {
 
@@ -832,8 +1235,10 @@ ${card.mirrored
         function addCropMarks(page) {
 
             const cards =
-                [...page.querySelectorAll(".card")];
-
+                [
+                    ...page.querySelectorAll(".card"),
+                    ...page.querySelectorAll(".cheat-card")
+                ];
             cards.forEach(card => {
 
                 const rect =
