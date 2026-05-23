@@ -17,6 +17,7 @@
       "mirrors": true,
 
       "points": 0,
+      "quantity": 2,
 
       "icon": "↘",
       "mirroredIcon": "↙",
@@ -48,22 +49,6 @@
       ]
     },
 
-    "blinker": {
-      "name": "Blinker",
-      "category": "Oscillator",
-      "phaseCount": 2,
-
-      "mirrors": false,
-
-      "points": 0,
-
-      "icon": "⥁",
-
-      "pattern": [
-        [1,1,1]
-      ]
-    },
-
     "beacon": {
       "name": "Beacon",
       "category": "Oscillator",
@@ -84,6 +69,7 @@
       ]
     },
 
+
     "block": {
       "name": "Block",
       "category": "Still Life",
@@ -92,6 +78,7 @@
       "mirrors": false,
 
       "points": 0,
+      "quantity": 3,
 
       "icon": "⬡",
 
@@ -109,6 +96,7 @@
       "mirrors": true,
 
       "points": 0,
+        "quantity": 2,
 
       "icon": "←⬡",
       "mirroredIcon": "⬡→",
@@ -128,6 +116,7 @@
       "mirrors": false,
 
       "points": 0,
+        "quantity": 2,
 
       "icon": "⬡",
 
@@ -154,7 +143,369 @@
         [0,1,1,1],
         [1,1,1,0]
       ]
-    }
+    },
+    "mold": {
+  "name": "Mold",
+  "category": "Oscillator",
+  "phaseCount": 4,
+  "mirrors": true,
+  "points": 0,
 
+  "icon": "⥁",
+  "mirroredIcon": "⥀",
+
+
+  "pattern": [
+    [0,0,0,1,1,0],
+    [0,0,1,0,0,1],
+    [1,0,0,1,0,1],
+    [0,0,0,0,1,0],
+    [1,0,1,1,0,0],
+    [0,1,0,0,0,0]
+  ]
+} ,  
+ "tripole": {
+  "name": "Tripole",
+  "category": "Oscillator",
+  "phaseCount": 2,
+  "mirrors": true,
+  "points": 0,
+
+  "quantity": 1,
+
+  "icon": "⥁",
+  "mirroredIcon": "⥀",
+
+  "pattern": [
+    [1,1,0,0,0,0],
+    [1,0,1,0,0,0],
+    [0,0,0,0,0,0],
+    [0,0,1,0,1,0],
+    [0,0,0,0,0,1],
+    [0,0,0,0,1,1]
+  ]
+},
+
+
+"jam": {
+  "name": "Jam",
+  "category": "Oscillator",
+  "phaseCount": 3,
+  "mirrors": true,
+  "points": 0,
+
+  "quantity": 1,
+
+  "icon": "⥁",
+  "mirroredIcon": "⥀",
+
+  "pattern": [
+    [0,0,0,1,1,0],
+    [0,0,1,0,0,1],
+    [1,0,0,1,0,1],
+    [1,0,0,0,1,0],
+    [1,0,0,0,0,0],
+    [0,0,0,1,0,0],
+    [0,1,1,0,0,0]
+  ]
+},
+"loaf": {
+  "name": "Loaf",
+  "category": "Still Life",
+  "phaseCount": 1,
+  "mirrors": true,
+  "points": 0,
+
+  "quantity": 2,
+
+  "icon": "⬡→",
+  "mirroredIcon": "←⬡",
+
+  "pattern": [
+    [0,1,1,0],
+    [1,0,0,1],
+    [0,1,0,1],
+    [0,0,1,0]
+  ]
+}
+
+  },
+ "backgrounds": [
+
+  {
+    "id": "default",
+    "type": "patterns",
+
+    "name": "Default Back",
+
+    "gridSize": 5,
+
+    "copies": 9,
+
+    "pattern": [
+      [0,1,0],
+      [0,0,1],
+      [1,1,1]
+    ]
+  },
+
+  {
+    "id": "actions",
+    "type": "actions",
+
+    "name": "Action Back",
+
+    "gridSize": 5,
+
+    "copies": 9,
+
+    "pattern": [
+      [0,0,0],
+      [0,1,0],
+      [0,0,0]
+    ]
+  },
+
+  {
+    "id": "rules",
+    "type": "rules",
+
+    "name": "Rules Back",
+
+    "gridSize": 5,
+
+    "copies": 9,
+
+    "pattern": [
+      [1,1,1,1,1],
+      [0,0,0,0,0],
+      [1,1,1,1,1],
+      [0,0,0,0,0],
+      [1,1,1,1,1]
+    ]
   }
+
+],
+"actions": [
+
+  {
+    "id": "add-diagonal",
+    "title": "Grid",
+    "mode": "add",
+    "uses": "?",
+
+    "pattern": [
+      [2,0,2],
+      [0,1,0],
+      [2,0,2]
+    ]
+  },
+
+  {
+    "id": "add-orthogonal",
+    "title": "Grid",
+    "mode": "add",
+    "uses": "?",
+
+    "pattern": [
+      [0,2,0],
+      [2,1,2],
+      [0,2,0]
+    ]
+  },
+
+  {
+    "id": "add-isolated",
+    "title": "Grid",
+    "mode": "add",
+    "uses": "?",
+
+    "pattern": [
+      [0,0,0],
+      [0,2,0],
+      [0,0,0]
+    ]
+  },
+
+  {
+    "id": "remove-diagonal",
+    "title": "Grid",
+    "mode": "remove",
+    "uses": "?",
+
+    "pattern": [
+      [2,0,2],
+      [0,1,0],
+      [2,0,2]
+    ]
+  },
+
+  {
+    "id": "remove-orthogonal",
+    "title": "Grid",
+    "mode": "remove",
+    "uses": "?",
+
+    "pattern": [
+      [0,2,0],
+      [2,1,2],
+      [0,2,0]
+    ]
+  },
+
+  {
+    "id": "remove-isolated",
+    "title": "Grid",
+    "mode": "remove",
+    "uses": "?",
+
+    "pattern": [
+      [0,0,0],
+      [0,2,0],
+      [0,0,0]
+    ]
+  },
+  {
+  "id": "swap-grid-tiles",
+
+  "mode": "swap",
+
+  "layout": "swap",
+
+  "uses": "?",
+
+  "quantity": 3
+}
+],
+"ruleCards": [
+
+  {
+    "id": "gol-rules-en",
+
+    "language": "en",
+
+    "title": "What is Conway's Game of Life?",
+
+    "sections": [
+
+      {
+        "title": "Underpopulation",
+
+        "description":
+          "A live cell with fewer than 2 neighbors dies.",
+
+"pattern": [
+  [0,0,0],
+  [0,3,0],
+  [0,0,0]
+]
+      },
+
+      {
+        "title": "Survival",
+
+        "description":
+          "A live cell with 2 or 3 neighbors survives.",
+
+        "pattern": [
+          [0,1,0],
+          [1,1,0],
+          [0,1,0]
+        ]
+      },
+
+      {
+        "title": "Overpopulation",
+
+        "description":
+          "A live cell with more than 3 neighbors dies.",
+
+"pattern": [
+  [1,1,1],
+  [1,3,0],
+  [0,1,0]
+]
+      },
+
+      {
+        "title": "Birth",
+
+        "description":
+          "A dead cell with exactly 3 neighbors becomes alive.",
+
+"pattern": [
+  [1,1,0],
+  [1,2,0],
+  [0,0,0]
+]
+      }
+
+    ]
+  },
+
+  {
+    "id": "gol-rules-pt",
+
+    "language": "pt",
+
+    "title": "O que é o Jogo da Vida?",
+
+    "sections": [
+
+      {
+        "title": "Solidão",
+
+        "description":
+          "Uma célula viva com menos de 2 vizinhos morre.",
+
+"pattern": [
+  [0,0,0],
+  [0,3,0],
+  [0,0,0]
+]
+      },
+
+      {
+        "title": "Sobrevivência",
+
+        "description":
+          "Uma célula viva com 2 ou 3 vizinhos sobrevive.",
+
+        "pattern": [
+          [0,1,0],
+          [1,1,0],
+          [0,1,0]
+        ]
+      },
+
+      {
+        "title": "Superpopulação",
+
+        "description":
+          "Uma célula viva com mais de 3 vizinhos morre.",
+
+"pattern": [
+  [1,1,1],
+  [1,3,0],
+  [0,1,0]
+]
+      },
+
+      {
+        "title": "Nascimento",
+
+        "description":
+          "Uma célula morta com exatamente 3 vizinhos nasce.",
+
+"pattern": [
+  [1,1,0],
+  [1,2,0],
+  [0,0,0]
+]
+      }
+
+    ]
+  }
+
+]
 }
