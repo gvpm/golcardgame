@@ -375,6 +375,52 @@
   "uses": "?",
 
   "quantity": 3
+},
+{
+  "id": "add-any",
+
+  "title": "Grid",
+
+  "mode": "add",
+
+  "uses": "?",
+
+  "quantity": 6,
+
+  "pattern": [
+    [2,2,2],
+    [2,1,2],
+    [2,2,2]
+  ]
+},
+
+{
+  "id": "remove-any",
+
+  "title": "Grid",
+
+  "mode": "remove",
+
+  "uses": "?",
+
+  "quantity": 6,
+
+  "pattern": [
+    [2,2,2],
+    [2,1,2],
+    [2,2,2]
+  ]
+},
+{
+  "id": "clear-grid-tile",
+
+  "mode": "clear",
+
+  "layout": "clear",
+
+  "uses": "?",
+
+  "quantity": 6
 }
 ],
 "ruleCards": [
