@@ -713,7 +713,7 @@
     <canvas id="game"></canvas>
     <div class="mobile-hint">Gire o celular para horizontal para ver o grid no formato pensado para smartphone.</div>
 
-    <div class="hud" id="status">Pausado | Geracao 0 | 28 x 13</div>
+    <div class="hud" id="status">Pausado | Geracao 0 | 20 x 14</div>
 
     <div class="top-menu">
         <button class="menu-toggle" id="top-menu-toggle" aria-label="Abrir menu superior">☰</button>
@@ -747,8 +747,8 @@
             <button id="btn-border">Borda ligada</button>
             <button id="btn-size">Tamanho</button>
             <div class="menu-inline-panel" id="size-panel">
-                <label for="size-slider" id="size-label">Resolucao 28 x 13</label>
-                <input id="size-slider" type="range" min="9" max="22" step="1" value="13" aria-label="Ajustar resolucao do grid">
+                <label for="size-slider" id="size-label">Resolucao 20 x 14</label>
+                <input id="size-slider" type="range" min="9" max="22" step="1" value="14" aria-label="Ajustar resolucao do grid">
             </div>
             <button id="btn-refresh">Refresh</button>
         </div>
@@ -804,9 +804,9 @@
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
 
-        const GRID_ASPECT_RATIO = 28 / 13;
-        let ROWS = 13;
-        let COLS = 28;
+        const GRID_ASPECT_RATIO = 20 / 14;
+        let ROWS = 14;
+        let COLS = 20;
         let cellWidth = 16;
         let cellHeight = 16;
 
@@ -852,16 +852,19 @@
         let patternOverlay = null;
         let analysisMode = false;
         let allowOverlappingPatterns = false;
-        const patternColors = {
-            Glider: { fill: 'rgba(125, 211, 167, 0.18)', stroke: 'rgba(125, 211, 167, 0.94)', solid: '#7dd3a7' },
-            LWSS: { fill: 'rgba(96, 165, 250, 0.16)', stroke: 'rgba(96, 165, 250, 0.94)', solid: '#60a5fa' },
-            Blinker: { fill: 'rgba(248, 113, 113, 0.16)', stroke: 'rgba(248, 113, 113, 0.94)', solid: '#f87171' },
-            Beacon: { fill: 'rgba(250, 204, 21, 0.16)', stroke: 'rgba(250, 204, 21, 0.94)', solid: '#facc15' },
-            Block: { fill: 'rgba(192, 132, 252, 0.16)', stroke: 'rgba(192, 132, 252, 0.94)', solid: '#c084fc' },
-            Boat: { fill: 'rgba(244, 114, 182, 0.16)', stroke: 'rgba(244, 114, 182, 0.94)', solid: '#f472b6' },
-            Tub: { fill: 'rgba(251, 146, 60, 0.16)', stroke: 'rgba(251, 146, 60, 0.94)', solid: '#fb923c' },
-            Toad: { fill: 'rgba(45, 212, 191, 0.16)', stroke: 'rgba(45, 212, 191, 0.94)', solid: '#2dd4bf' }
-        };
+        const patternColorPalette = [
+            { fill: 'rgba(125, 211, 167, 0.18)', stroke: 'rgba(125, 211, 167, 0.94)', solid: '#7dd3a7' },
+            { fill: 'rgba(96, 165, 250, 0.16)', stroke: 'rgba(96, 165, 250, 0.94)', solid: '#60a5fa' },
+            { fill: 'rgba(250, 204, 21, 0.16)', stroke: 'rgba(250, 204, 21, 0.94)', solid: '#facc15' },
+            { fill: 'rgba(192, 132, 252, 0.16)', stroke: 'rgba(192, 132, 252, 0.94)', solid: '#c084fc' },
+            { fill: 'rgba(244, 114, 182, 0.16)', stroke: 'rgba(244, 114, 182, 0.94)', solid: '#f472b6' },
+            { fill: 'rgba(251, 146, 60, 0.16)', stroke: 'rgba(251, 146, 60, 0.94)', solid: '#fb923c' },
+            { fill: 'rgba(45, 212, 191, 0.16)', stroke: 'rgba(45, 212, 191, 0.94)', solid: '#2dd4bf' },
+            { fill: 'rgba(248, 113, 113, 0.16)', stroke: 'rgba(248, 113, 113, 0.94)', solid: '#f87171' },
+            { fill: 'rgba(129, 140, 248, 0.16)', stroke: 'rgba(129, 140, 248, 0.94)', solid: '#818cf8' },
+            { fill: 'rgba(52, 211, 153, 0.16)', stroke: 'rgba(52, 211, 153, 0.94)', solid: '#34d399' }
+        ];
+        const patternColors = {};
 
         function createGrid() {
             return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
@@ -1314,20 +1317,65 @@
             return next;
         }
 
-        function buildFamilyVariants(name, basePattern, transformPatterns) {
+        function clonePattern(pattern) {
+            return pattern.map((row) => row.slice());
+        }
+
+        function getPatternDefinitions() {
+            return Object.entries(patterns).map(([key, def], index) => ({
+                key,
+                name: def.name,
+                category: def.category,
+                phaseCount: def.phaseCount || 4,
+                mirrors: Boolean(def.mirrors),
+                pattern: def.pattern,
+                color: patternColorPalette[index % patternColorPalette.length]
+            }));
+        }
+
+        function syncPatternColors() {
+            getPatternDefinitions().forEach((def) => {
+                patternColors[def.name] = def.color;
+            });
+        }
+
+        function getPatternTransforms(def) {
+            const seeds = [clonePattern(def.pattern)];
+            if (def.mirrors) {
+                seeds.push(mirrorPattern(def.pattern));
+            }
+
+            const transforms = [];
+            const seen = new Set();
+            for (const seed of seeds) {
+                let current = trimPattern(seed);
+                for (let rotation = 0; rotation < 4; rotation++) {
+                    const trimmed = trimPattern(current);
+                    const key = patternKey(trimmed);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        transforms.push(trimmed);
+                    }
+                    current = rotatePattern(current);
+                }
+            }
+            return transforms;
+        }
+
+        function buildFamilyVariants(def, transformPatterns) {
             const variants = [];
             const seen = new Set();
-            const phaseCount = basePattern.phaseCount || 4;
+            const phaseCount = def.phaseCount || 4;
 
             for (const transformed of transformPatterns) {
                 let current = trimPattern(transformed);
                 for (let phase = 0; phase < phaseCount; phase++) {
                     const trimmed = trimPattern(current);
-                    const key = name + '|' + phase + '|' + patternKey(trimmed);
+                    const key = def.name + '|' + phase + '|' + patternKey(trimmed);
                     if (!seen.has(key)) {
                         seen.add(key);
                         variants.push({
-                            family: name,
+                            family: def.name,
                             phase,
                             pattern: trimmed,
                             liveCells: getLiveCells(trimmed),
@@ -1343,23 +1391,11 @@
         }
 
         function createPatternFamilies() {
-            const gliderTransforms = [];
-            let gliderPattern = patterns.glider;
-            for (let i = 0; i < 4; i++) {
-                gliderTransforms.push(gliderPattern);
-                gliderPattern = rotatePattern(gliderPattern);
+            const families = {};
+            for (const def of getPatternDefinitions()) {
+                families[def.key] = buildFamilyVariants(def, getPatternTransforms(def));
             }
-
-            return {
-                glider: buildFamilyVariants('Glider', patterns.glider, gliderTransforms),
-                lwss: buildFamilyVariants('LWSS', patterns.lwss, [patterns.lwss, mirrorPattern(patterns.lwss)]),
-                blinker: buildFamilyVariants('Blinker', patterns.blinker, [patterns.blinker]),
-                beacon: buildFamilyVariants('Beacon', patterns.beacon, [patterns.beacon]),
-                block: buildFamilyVariants('Block', patterns.block, [patterns.block]),
-                boat: buildFamilyVariants('Boat', patterns.boat, [patterns.boat]),
-                tub: buildFamilyVariants('Tub', patterns.tub, [patterns.tub]),
-                toad: buildFamilyVariants('Toad', patterns.toad, [patterns.toad])
-            };
+            return families;
         }
 
         function buildPatternPreviewSvg(pattern) {
@@ -1388,36 +1424,35 @@
         function renderPatternCatalog() {
             patternCatalogList.innerHTML = '';
 
-            const catalogOrder = ['Glider', 'LWSS', 'Blinker', 'Beacon', 'Block', 'Boat', 'Tub', 'Toad'];
-            for (const familyName of catalogOrder) {
-                const familyVariants = Object.values(patternFamilies)
-                    .flat()
-                    .filter((variant) => variant.family === familyName);
-
-                familyVariants.sort((a, b) => {
-                    if (a.phase !== b.phase) return a.phase - b.phase;
-                    return patternKey(a.pattern).localeCompare(patternKey(b.pattern));
-                });
-
-                if (!familyVariants.length) continue;
-
+            for (const def of getPatternDefinitions()) {
                 const group = document.createElement('div');
                 group.className = 'pattern-catalog-group';
 
                 const title = document.createElement('h3');
-                title.textContent = familyName;
+                title.textContent = def.name;
                 group.appendChild(title);
 
                 const variantsWrap = document.createElement('div');
                 variantsWrap.className = 'pattern-catalog-variants';
 
-                familyVariants.forEach((variant, index) => {
+                const catalogVariants = [
+                    { label: 'Padrao', pattern: def.pattern }
+                ];
+
+                if (def.mirrors) {
+                    const mirrored = mirrorPattern(def.pattern);
+                    if (patternKey(mirrored) !== patternKey(def.pattern)) {
+                        catalogVariants.push({ label: 'Mirror', pattern: mirrored });
+                    }
+                }
+
+                catalogVariants.forEach((variant) => {
                     const item = document.createElement('div');
                     item.className = 'pattern-catalog-item';
                     item.innerHTML = buildPatternPreviewSvg(variant.pattern);
 
                     const label = document.createElement('span');
-                    label.textContent = 'Fase ' + (variant.phase + 1) + ' | ' + (index + 1);
+                    label.textContent = variant.label;
                     item.appendChild(label);
                     variantsWrap.appendChild(item);
                 });
@@ -1430,25 +1465,14 @@
         function renderInsertOptions() {
             insertGrid.innerHTML = '';
 
-            const insertOrder = [
-                ['glider', 'Glider'],
-                ['lwss', 'LWSS'],
-                ['blinker', 'Blinker'],
-                ['beacon', 'Beacon'],
-                ['block', 'Block'],
-                ['boat', 'Boat'],
-                ['tub', 'Tub'],
-                ['toad', 'Toad']
-            ];
-
-            for (const [key, label] of insertOrder) {
+            for (const def of getPatternDefinitions()) {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'insert-option';
-                button.setAttribute('aria-label', 'Inserir ' + label);
-                button.innerHTML = buildPatternPreviewSvg(patterns[key]) + '<span>' + label + '</span>';
+                button.setAttribute('aria-label', 'Inserir ' + def.name);
+                button.innerHTML = buildPatternPreviewSvg(def.pattern) + '<span>' + def.name + '</span>';
                 button.addEventListener('click', () => {
-                    injectPattern(patterns[key]);
+                    injectPattern(def.pattern);
                     insertPanel.classList.remove('open');
                 });
                 insertGrid.appendChild(button);
@@ -1501,7 +1525,7 @@
 
         function analyzeCurrentGrid() {
             const matches = [];
-            const totals = { Glider: 0, LWSS: 0, Blinker: 0, Beacon: 0, Block: 0, Boat: 0, Tub: 0, Toad: 0 };
+            const totals = Object.fromEntries(getPatternDefinitions().map((def) => [def.name, 0]));
             const seen = new Set();
 
             for (const familyName of Object.keys(patternFamilies)) {
@@ -1545,7 +1569,7 @@
                 ? matches
                 : filterOverlappingMatches(matches);
 
-            const filteredTotals = { Glider: 0, LWSS: 0, Blinker: 0, Beacon: 0, Block: 0, Boat: 0, Tub: 0, Toad: 0 };
+            const filteredTotals = Object.fromEntries(getPatternDefinitions().map((def) => [def.name, 0]));
             filteredMatches.forEach((match) => {
                 filteredTotals[match.family] += 1;
             });
@@ -1583,16 +1607,10 @@
             patternSummary.innerHTML = '';
             patternList.innerHTML = '';
 
-            const summaryItems = [
-                { label: 'Gliders encontrados', value: analysis.totals.Glider },
-                { label: 'LWSS encontrados', value: analysis.totals.LWSS },
-                { label: 'Blinkers encontrados', value: analysis.totals.Blinker },
-                { label: 'Beacons encontrados', value: analysis.totals.Beacon },
-                { label: 'Blocks encontrados', value: analysis.totals.Block },
-                { label: 'Boats encontrados', value: analysis.totals.Boat },
-                { label: 'Tubs encontrados', value: analysis.totals.Tub },
-                { label: 'Toads encontrados', value: analysis.totals.Toad }
-            ];
+            const summaryItems = getPatternDefinitions().map((def) => ({
+                label: def.name + ' encontrados',
+                value: analysis.totals[def.name] || 0
+            }));
 
             for (const item of summaryItems) {
                 const card = document.createElement('div');
@@ -1633,7 +1651,7 @@
 
                 const details = document.createElement('span');
                 details.textContent =
-                    'Fase ' + match.phase +
+                    'Fase ' + (match.phase + 1) +
                     ' | linha ' + (match.row + 1) +
                     ' | coluna ' + (match.col + 1) +
                     ' | area ' + match.width + 'x' + match.height;
@@ -1645,7 +1663,7 @@
 
         function showPatternTip(match) {
             patternTipTitle.style.color = patternColors[match.family]?.solid || '#ffffff';
-            patternTipTitle.textContent = match.family + ' | fase ' + match.phase;
+            patternTipTitle.textContent = match.family + ' | fase ' + (match.phase + 1);
             patternTipBody.textContent =
                 'Linha ' + (match.row + 1) +
                 ' | coluna ' + (match.col + 1) +
@@ -1736,46 +1754,141 @@
         }
 
         const patterns = {
-            glider: [
-                [0, 1, 0],
-                [0, 0, 1],
-                [1, 1, 1]
-            ],
-            lwss: [
-                [0, 1, 0, 0, 1],
-                [1, 0, 0, 0, 0],
-                [1, 0, 0, 0, 1],
-                [1, 1, 1, 1, 0]
-            ],
-            blinker: Object.assign([
-                [1, 1, 1]
-            ], { phaseCount: 2 }),
-            beacon: Object.assign([
-                [1, 1, 0, 0],
-                [1, 1, 0, 0],
-                [0, 0, 1, 1],
-                [0, 0, 1, 1]
-            ], { phaseCount: 2 }),
-            block: Object.assign([
-                [1, 1],
-                [1, 1]
-            ], { phaseCount: 1 }),
-            boat: Object.assign([
-                [1, 1, 0],
-                [1, 0, 1],
-                [0, 1, 0]
-            ], { phaseCount: 1 }),
-            tub: Object.assign([
-                [0, 1, 0],
-                [1, 0, 1],
-                [0, 1, 0]
-            ], { phaseCount: 1 }),
-            toad: Object.assign([
-                [0, 1, 1, 1],
-                [1, 1, 1, 0]
-            ], { phaseCount: 2 })
+            glider: {
+                name: 'Glider',
+                category: 'Spaceship',
+                phaseCount: 4,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 0],
+                    [0, 0, 1],
+                    [1, 1, 1]
+                ]
+            },
+            lwss: {
+                name: 'LWSS',
+                category: 'Spaceship',
+                phaseCount: 4,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 0, 0, 1],
+                    [1, 0, 0, 0, 0],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 0]
+                ]
+            },
+            beacon: {
+                name: 'Beacon',
+                category: 'Oscillator',
+                phaseCount: 2,
+                mirrors: true,
+                pattern: [
+                    [1, 1, 0, 0],
+                    [1, 1, 0, 0],
+                    [0, 0, 1, 1],
+                    [0, 0, 1, 1]
+                ]
+            },
+            block: {
+                name: 'Block',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: false,
+                pattern: [
+                    [1, 1],
+                    [1, 1]
+                ]
+            },
+            boat: {
+                name: 'Boat',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: true,
+                pattern: [
+                    [1, 1, 0],
+                    [1, 0, 1],
+                    [0, 1, 0]
+                ]
+            },
+            tub: {
+                name: 'Tub',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: false,
+                pattern: [
+                    [0, 1, 0],
+                    [1, 0, 1],
+                    [0, 1, 0]
+                ]
+            },
+            toad: {
+                name: 'Toad',
+                category: 'Oscillator',
+                phaseCount: 2,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 1, 1],
+                    [1, 1, 1, 0]
+                ]
+            },
+            mold: {
+                name: 'Mold',
+                category: 'Oscillator',
+                phaseCount: 4,
+                mirrors: true,
+                pattern: [
+                    [0, 0, 0, 1, 1, 0],
+                    [0, 0, 1, 0, 0, 1],
+                    [1, 0, 0, 1, 0, 1],
+                    [0, 0, 0, 0, 1, 0],
+                    [1, 0, 1, 1, 0, 0],
+                    [0, 1, 0, 0, 0, 0]
+                ]
+            },
+            tripole: {
+                name: 'Tripole',
+                category: 'Oscillator',
+                phaseCount: 2,
+                mirrors: true,
+                pattern: [
+                    [1, 1, 0, 0, 0, 0],
+                    [1, 0, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 1, 0],
+                    [0, 0, 0, 0, 0, 1],
+                    [0, 0, 0, 0, 1, 1]
+                ]
+            },
+            jam: {
+                name: 'Jam',
+                category: 'Oscillator',
+                phaseCount: 3,
+                mirrors: true,
+                pattern: [
+                    [0, 0, 0, 1, 1, 0],
+                    [0, 0, 1, 0, 0, 1],
+                    [1, 0, 0, 1, 0, 1],
+                    [1, 0, 0, 0, 1, 0],
+                    [1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0, 0],
+                    [0, 1, 1, 0, 0, 0]
+                ]
+            },
+            loaf: {
+                name: 'Loaf',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 1, 0],
+                    [1, 0, 0, 1],
+                    [0, 1, 0, 1],
+                    [0, 0, 1, 0]
+                ]
+            }
         };
 
+        syncPatternColors();
         const patternFamilies = createPatternFamilies();
 
         canvas.addEventListener('click', (event) => {
@@ -1961,7 +2074,7 @@
             navigator.serviceWorker.register('sw.js').catch(() => {});
         }
 
-        injectPattern(patterns.glider);
+        injectPattern(patterns.glider.pattern);
         resizeCanvas();
         renderPatternCatalog();
         renderInsertOptions();
