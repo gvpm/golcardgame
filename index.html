@@ -669,10 +669,10 @@
         }
 
         .camera-card {
-            width: min(92vw, 560px);
-            max-height: min(86vh, 720px);
+            width: min(94vw, 640px);
+            max-height: min(92vh, 720px);
             overflow-y: auto;
-            padding: 18px;
+            padding: 14px;
             border: 1px solid var(--line);
             border-radius: 18px;
             background: rgba(10, 14, 19, 0.96);
@@ -684,25 +684,25 @@
             justify-content: space-between;
             align-items: flex-start;
             gap: 12px;
-            margin-bottom: 14px;
+            margin-bottom: 10px;
         }
 
         .camera-header h2 {
             margin: 0;
-            font-size: 1.15rem;
+            font-size: 1rem;
         }
 
         .camera-header p,
         .camera-status {
-            margin: 6px 0 0;
+            margin: 4px 0 0;
             color: var(--muted);
             font-size: 0.88rem;
             line-height: 1.4;
         }
 
         .camera-close {
-            width: 46px;
-            height: 46px;
+            width: 40px;
+            height: 40px;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.06);
@@ -712,7 +712,15 @@
             flex: 0 0 auto;
         }
 
-        .camera-video,
+        .camera-close {
+            font-size: 0;
+        }
+
+        .camera-close::before {
+            content: "X";
+            font-size: 1rem;
+        }
+
         .camera-canvas {
             display: block;
             width: 100%;
@@ -723,13 +731,21 @@
             object-fit: contain;
         }
 
+        .camera-preview-wrap {
+            display: none;
+        }
+
+        .camera-preview-wrap.ready {
+            display: block;
+        }
+
         .camera-canvas[hidden] {
             display: none;
         }
 
         .camera-actions {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 10px;
             margin-top: 12px;
         }
@@ -744,6 +760,16 @@
             cursor: pointer;
         }
 
+        .camera-apply {
+            background: rgba(125, 211, 167, 0.18);
+            border-color: rgba(125, 211, 167, 0.35);
+        }
+
+        .camera-apply[disabled] {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
         body.inverted-ui .camera-card,
         body.inverted-ui .camera-close,
         body.inverted-ui .camera-actions button {
@@ -755,6 +781,36 @@
         body.inverted-ui .camera-header p,
         body.inverted-ui .camera-status {
             color: #334155;
+        }
+
+        @media (max-height: 520px) and (orientation: landscape) {
+            .camera-card {
+                width: min(86vw, 720px);
+                max-height: calc(100vh - 18px);
+                padding: 10px;
+            }
+
+            .camera-header p {
+                display: none;
+            }
+
+            .camera-canvas {
+                max-height: 48vh;
+            }
+
+            .camera-actions {
+                margin-top: 8px;
+                gap: 8px;
+            }
+
+            .camera-actions button {
+                min-height: 40px;
+            }
+
+            .camera-status {
+                margin-top: 8px;
+                font-size: 0.8rem;
+            }
         }
 
         .hud {
@@ -968,18 +1024,21 @@
             <div class="camera-header">
                 <div>
                     <h2>Capturar grid fisico</h2>
-                    <p>Enquadre o grid 20 x 14 com fundo branco e pecas pretas.</p>
+                    <p>Tire ou escolha uma foto, revise o preview e confirme.</p>
                 </div>
                 <button class="camera-close" id="camera-close" aria-label="Fechar camera">Ã—</button>
             </div>
-            <video class="camera-video" id="camera-video" autoplay playsinline muted></video>
-            <canvas class="camera-canvas" id="camera-canvas" hidden></canvas>
-            <div class="camera-actions">
-                <button id="camera-capture">Capturar grid</button>
-                <button id="camera-file-button">Usar foto</button>
+            <div class="camera-preview-wrap" id="camera-preview-wrap">
+                <canvas class="camera-canvas" id="camera-canvas" hidden></canvas>
             </div>
-            <p class="camera-status" id="camera-status">A camera sera solicitada ao abrir.</p>
-            <input id="camera-file" type="file" accept="image/*" capture="environment" hidden>
+            <div class="camera-actions">
+                <button id="camera-capture">Camera</button>
+                <button id="camera-file-button">Arquivo</button>
+                <button class="camera-apply" id="camera-apply" disabled>OK</button>
+            </div>
+            <p class="camera-status" id="camera-status">Escolha uma foto do grid 20 x 14.</p>
+            <input id="camera-shot-file" type="file" accept="image/*" capture="environment" hidden>
+            <input id="camera-file" type="file" accept="image/*" hidden>
         </div>
     </div>
 
@@ -1033,19 +1092,21 @@
         const patternTipTitle = document.getElementById('pattern-tip-title');
         const patternTipBody = document.getElementById('pattern-tip-body');
         const cameraModal = document.getElementById('camera-modal');
-        const cameraVideo = document.getElementById('camera-video');
+        const cameraPreviewWrap = document.getElementById('camera-preview-wrap');
         const cameraCanvas = document.getElementById('camera-canvas');
         const cameraCaptureButton = document.getElementById('camera-capture');
         const cameraCloseButton = document.getElementById('camera-close');
         const cameraFileButton = document.getElementById('camera-file-button');
+        const cameraShotInput = document.getElementById('camera-shot-file');
         const cameraFileInput = document.getElementById('camera-file');
+        const cameraApplyButton = document.getElementById('camera-apply');
         const cameraStatus = document.getElementById('camera-status');
         let longPressTimer = null;
         let longPressActive = false;
         let patternOverlay = null;
         let analysisMode = false;
         let allowOverlappingPatterns = false;
-        let cameraStream = null;
+        let pendingCameraGrid = null;
         const patternColorPalette = [
             { fill: 'rgba(125, 211, 167, 0.18)', stroke: 'rgba(125, 211, 167, 0.94)', solid: '#7dd3a7' },
             { fill: 'rgba(96, 165, 250, 0.16)', stroke: 'rgba(96, 165, 250, 0.94)', solid: '#60a5fa' },
@@ -1100,9 +1161,9 @@
         }
 
         function drawGrid() {
-            const deadColor = inverted ? '#f4f7fb' : '#0d1014';
+            const deadColor = inverted ? '#eef2f7' : '#171a1e';
             const aliveColor = inverted ? '#0d1014' : '#f4f7fb';
-            const lineColor = inverted ? '#bcc7d3' : '#25303b';
+            const lineColor = inverted ? '#b8c2cf' : '#080a0d';
             const gridWidth = cellSize * COLS;
             const gridHeight = cellSize * ROWS;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1974,55 +2035,22 @@
         async function openCameraPanel() {
             cameraModal.classList.add('open');
             cameraButton.classList.add('active');
+            pendingCameraGrid = null;
+            cameraApplyButton.disabled = true;
             cameraCanvas.hidden = true;
-            cameraVideo.hidden = false;
-            cameraStatus.textContent = 'Solicitando camera...';
-
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                cameraStatus.textContent = 'Camera direta indisponivel neste navegador. Use uma foto.';
-                cameraFileInput.click();
-                return;
-            }
-
-            try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: 'environment' },
-                        width: { ideal: 1600 },
-                        height: { ideal: 1200 }
-                    },
-                    audio: false
-                });
-                cameraVideo.srcObject = cameraStream;
-                await cameraVideo.play();
-                cameraStatus.textContent = 'Enquadre o tabuleiro e toque em Capturar grid.';
-            } catch (error) {
-                cameraStatus.textContent = 'Nao foi possivel abrir a camera. Use uma foto do grid.';
-                cameraFileInput.click();
-            }
+            cameraPreviewWrap.classList.remove('ready');
+            cameraStatus.textContent = 'Escolha Camera para tirar uma foto ou Arquivo para usar uma imagem.';
         }
 
         function closeCameraPanel() {
             cameraModal.classList.remove('open');
             cameraButton.classList.remove('active');
-            if (cameraStream) {
-                cameraStream.getTracks().forEach((track) => track.stop());
-                cameraStream = null;
-            }
-            cameraVideo.srcObject = null;
+            pendingCameraGrid = null;
+            cameraApplyButton.disabled = true;
         }
 
         function captureCameraFrame() {
-            if (!cameraVideo.videoWidth || !cameraVideo.videoHeight) {
-                cameraStatus.textContent = 'A camera ainda esta carregando.';
-                return;
-            }
-
-            const capture = document.createElement('canvas');
-            capture.width = cameraVideo.videoWidth;
-            capture.height = cameraVideo.videoHeight;
-            capture.getContext('2d').drawImage(cameraVideo, 0, 0);
-            importGridFromImage(capture);
+            cameraShotInput.click();
         }
 
         function loadCameraFile(file) {
@@ -2035,7 +2063,7 @@
                 capture.width = image.naturalWidth;
                 capture.height = image.naturalHeight;
                 capture.getContext('2d').drawImage(image, 0, 0);
-                importGridFromImage(capture);
+                analyzeGridImage(capture);
             };
             image.src = URL.createObjectURL(file);
         }
@@ -2045,8 +2073,8 @@
             const ys = [];
             const data = imageData.data;
 
-            for (let y = 0; y < height; y += 2) {
-                for (let x = 0; x < width; x += 2) {
+            for (let y = 0; y < height; y += 4) {
+                for (let x = 0; x < width; x += 4) {
                     const index = (y * width + x) * 4;
                     const r = data[index];
                     const g = data[index + 1];
@@ -2054,7 +2082,7 @@
                     const max = Math.max(r, g, b);
                     const min = Math.min(r, g, b);
                     const lightness = (max + min) / 2;
-                    if (lightness > 150 && max - min < 80) {
+                    if (lightness > 70 && max - min < 120) {
                         xs.push(x);
                         ys.push(y);
                     }
@@ -2068,15 +2096,15 @@
             xs.sort((a, b) => a - b);
             ys.sort((a, b) => a - b);
             const q = (values, ratio) => values[Math.min(values.length - 1, Math.max(0, Math.floor(values.length * ratio)))];
-            const left = q(xs, 0.02);
-            const right = q(xs, 0.98);
-            const top = q(ys, 0.02);
-            const bottom = q(ys, 0.98);
+            const left = q(xs, 0.03);
+            const right = q(xs, 0.995);
+            const top = q(ys, 0.03);
+            const bottom = q(ys, 0.995);
 
             return { left, top, right, bottom };
         }
 
-        function importGridFromImage(sourceCanvas) {
+        function analyzeGridImage(sourceCanvas) {
             if (ROWS !== 14 || COLS !== 20) {
                 ROWS = 14;
                 COLS = 20;
@@ -2099,12 +2127,11 @@
                     const cellTop = bounds.top + boardHeight * row / ROWS;
                     const cellW = boardWidth / COLS;
                     const cellH = boardHeight / ROWS;
-                    const sampleLeft = Math.floor(cellLeft + cellW * 0.28);
-                    const sampleRight = Math.ceil(cellLeft + cellW * 0.72);
-                    const sampleTop = Math.floor(cellTop + cellH * 0.28);
-                    const sampleBottom = Math.ceil(cellTop + cellH * 0.72);
-                    let darkness = 0;
-                    let count = 0;
+                    const sampleLeft = Math.floor(cellLeft + cellW * 0.34);
+                    const sampleRight = Math.ceil(cellLeft + cellW * 0.66);
+                    const sampleTop = Math.floor(cellTop + cellH * 0.34);
+                    const sampleBottom = Math.ceil(cellTop + cellH * 0.66);
+                    const lumas = [];
 
                     for (let y = sampleTop; y < sampleBottom; y++) {
                         if (y < 0 || y >= height) continue;
@@ -2115,60 +2142,80 @@
                             const g = imageData.data[index + 1];
                             const b = imageData.data[index + 2];
                             const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                            darkness += 1 - luma / 255;
-                            count += 1;
+                            lumas.push(luma);
                         }
                     }
+
+                    lumas.sort((a, b) => a - b);
+                    const count = lumas.length;
+                    const dark35 = count ? lumas.filter((value) => value < 35).length / count : 0;
+                    const dark50 = count ? lumas.filter((value) => value < 50).length / count : 0;
+                    const dark65 = count ? lumas.filter((value) => value < 65).length / count : 0;
+                    const dark85 = count ? lumas.filter((value) => value < 85).length / count : 0;
+                    const p10 = count ? lumas[Math.floor(count * 0.1)] : 255;
+                    const median = count ? lumas[Math.floor(count * 0.5)] : 255;
 
                     scores.push({
                         row,
                         col,
-                        value: count ? darkness / count : 0
+                        dark35,
+                        dark50,
+                        dark65,
+                        dark85,
+                        p10,
+                        median
                     });
                 }
             }
 
-            const values = scores.map((score) => score.value);
-            const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-            const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
-            const threshold = Math.max(0.34, mean + Math.sqrt(variance) * 1.35);
             const nextGrid = createGrid();
             let liveCount = 0;
 
             scores.forEach((score) => {
-                if (score.value >= threshold) {
+                const live =
+                    (score.dark35 > 0.45 && score.dark50 > 0.62 && score.median < 60) ||
+                    (score.dark50 > 0.72 && score.median < 54) ||
+                    (score.dark85 > 0.9 && score.p10 < 28 && score.median < 52);
+                if (live) {
                     nextGrid[score.row][score.col] = 1;
                     liveCount += 1;
                 }
             });
 
-            grid = nextGrid;
+            pendingCameraGrid = nextGrid;
+            cameraApplyButton.disabled = false;
+            drawCameraPreview(scores, nextGrid);
+            cameraStatus.textContent = 'Preview com ' + liveCount + ' celulas vivas. Toque OK para aplicar ou tente outra foto.';
+        }
+
+        function applyCameraGrid() {
+            if (!pendingCameraGrid) return;
+            grid = pendingCameraGrid.map((row) => row.slice());
             generation = 0;
             refreshPatternOverlayIfOpen();
             drawGrid();
             updateStatus();
-            drawCameraPreview(sourceCanvas, bounds, scores, threshold);
-            cameraStatus.textContent = 'Grid importado com ' + liveCount + ' celulas vivas.';
+            closeCameraPanel();
         }
 
-        function drawCameraPreview(sourceCanvas, bounds, scores, threshold) {
+        function drawCameraPreview(scores, recognizedGrid) {
             cameraCanvas.hidden = false;
-            cameraVideo.hidden = true;
+            cameraPreviewWrap.classList.add('ready');
             cameraCanvas.width = 800;
             cameraCanvas.height = Math.round(800 * 14 / 20);
             const previewCtx = cameraCanvas.getContext('2d');
-            previewCtx.fillStyle = '#f8fafc';
+            previewCtx.fillStyle = '#eef2f7';
             previewCtx.fillRect(0, 0, cameraCanvas.width, cameraCanvas.height);
             const scaleX = cameraCanvas.width / COLS;
             const scaleY = cameraCanvas.height / ROWS;
 
             scores.forEach((score) => {
-                previewCtx.fillStyle = score.value >= threshold ? '#0f172a' : '#f8fafc';
+                previewCtx.fillStyle = recognizedGrid[score.row][score.col] ? '#0b0f14' : '#eef2f7';
                 previewCtx.fillRect(score.col * scaleX, score.row * scaleY, scaleX, scaleY);
             });
 
-            previewCtx.strokeStyle = '#0f172a';
-            previewCtx.lineWidth = 1;
+            previewCtx.strokeStyle = '#8d97a3';
+            previewCtx.lineWidth = 1.4;
             for (let row = 0; row <= ROWS; row++) {
                 const y = row * scaleY;
                 previewCtx.beginPath();
@@ -2432,6 +2479,11 @@
         cameraCaptureButton.addEventListener('click', captureCameraFrame);
         cameraCloseButton.addEventListener('click', closeCameraPanel);
         cameraFileButton.addEventListener('click', () => cameraFileInput.click());
+        cameraApplyButton.addEventListener('click', applyCameraGrid);
+        cameraShotInput.addEventListener('change', (event) => {
+            loadCameraFile(event.target.files[0]);
+            event.target.value = '';
+        });
         cameraFileInput.addEventListener('change', (event) => {
             loadCameraFile(event.target.files[0]);
             event.target.value = '';
