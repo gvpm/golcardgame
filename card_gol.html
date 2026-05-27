@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta charset="utf-8">
+
+<title>Card GOL Rulebook</title>
+
+<style>
+
+body{
+margin:0;
+background:#222;
+font-family:Arial,sans-serif;
+}
+
+.toolbar{
+position:sticky;
+top:0;
+background:#111;
+padding:10px;
+}
+
+button{
+
+padding:10px 16px;
+
+background:#333;
+
+color:#fff;
+
+border:none;
+
+border-radius:8px;
+
+}
+
+.page{
+
+width:210mm;
+height:297mm;
+
+background:#fff;
+
+margin:20px auto;
+
+padding:14mm;
+
+box-sizing:border-box;
+
+box-shadow:0 0 12px rgba(0,0,0,.3);
+
+}
+
+h1,h2,h3{
+
+margin:.2rem 0;
+
+}
+
+.section{
+
+margin-bottom:7mm;
+
+}
+
+.box{
+
+border:1px solid #ccc;
+
+border-radius:10px;
+
+padding:4mm;
+
+margin-top:2mm;
+
+}
+
+ul,ol,p{
+
+line-height:1.35;
+
+}
+
+table{
+
+border-collapse:collapse;
+
+width:100%;
+
+font-size:14px;
+
+}
+
+td,th{
+
+border:1px solid #bbb;
+
+padding:6px;
+
+text-align:left;
+
+}
+
+.small{
+
+font-size:12px;
+
+color:#555;
+
+}
+
+@media print{
+
+body{
+
+background:#fff;
+
+}
+
+.toolbar{
+
+display:none;
+
+}
+
+.page{
+
+margin:0;
+
+box-shadow:none;
+
+page-break-after:always;
+
+}
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="toolbar">
+
+<button onclick="window.print()">
+
+Exportar PDF
+
+</button>
+
+</div>
+
+<div class="page">
+
+<h1>Card GOL (Game of Life)</h1>
+
+<p>
+
+Modo físico compartilhado sem iteração automática.
+
+</p>
+
+<div class="section">
+
+<h2>
+
+O que é Conway's Game of Life?
+
+</h2>
+
+<p>
+
+É um autômato celular onde células vivas e mortas evoluem usando regras simples.
+
+</p>
+
+<div class="box">
+
+<b>Solidão</b>
+
+<br>
+
+Menos de 2 vizinhos → morre
+
+</div>
+
+<div class="box">
+
+<b>Sobrevivência</b>
+
+<br>
+
+2 ou 3 vizinhos → continua viva
+
+</div>
+
+<div class="box">
+
+<b>Superpopulação</b>
+
+<br>
+
+Mais de 3 vizinhos → morre
+
+</div>
+
+<div class="box">
+
+<b>Nascimento</b>
+
+<br>
+
+Exatamente 3 vizinhos → nasce
+
+</div>
+
+</div>
+
+<div class="section">
+
+<h2>
+
+Objetivo
+
+</h2>
+
+<p>
+
+Complete padrões escondidos na sua mão utilizando o grid compartilhado.
+
+</p>
+
+<p>
+
+Quando alguém completar o quinto resgate, finalize a rodada atual.
+
+Quem tiver mais pontos vence.
+
+</p>
+
+</div>
+
+<div class="section">
+
+<h2>
+
+Componentes
+
+</h2>
+
+<ul>
+
+<li>
+
+Baralho de padrões
+
+</li>
+
+<li>
+
+Baralho de ações
+
+</li>
+
+<li>
+
+1 grid compartilhado 20×14
+
+</li>
+
+<li>
+
+1 dado
+
+</li>
+
+</ul>
+
+</div>
+
+<div class="section">
+
+<h2>
+
+Grid Compartilhado
+
+</h2>
+
+<div class="box">
+
+O grid utilizado é único para todos os jogadores.
+
+<br><br>
+
+Ele é formado por 4 grids menores 10×7 conectados.
+
+<br><br>
+
+Todos os jogadores modificam o MESMO espaço.
+
+</div>
+
+</div>
+
+</div>
+
+<div class="page">
+
+<h2>
+
+Preparação
+
+</h2>
+
+<ol>
+
+<li>
+
+Monte o grid compartilhado vazio.
+
+</li>
+
+<li>
+
+Cada jogador compra 5 padrões.
+
+</li>
+
+<li>
+
+Cada jogador compra 4 cartas de ação.
+
+</li>
+
+<li>
+
+Escolha 2 para ficarem ativas.
+
+</li>
+
+<li>
+
+Mantenha 2 escondidas na mão.
+
+</li>
+
+</ol>
+
+<h2>
+
+Estrutura das Cartas de Ação
+
+</h2>
+
+<ul>
+
+<li>
+
+2 ações ficam ativas
+
+</li>
+
+<li>
+
+2 permanecem escondidas na mão
+
+</li>
+
+<li>
+
+Você SEMPRE deve terminar com 2 ações escondidas
+
+</li>
+
+</ul>
+
+<div class="box">
+
+Sempre que uma carta sair da sua mão:
+
+<ul>
+
+<li>
+
+por uso de Swap Grid
+
+</li>
+
+<li>
+
+por uso de Clear Grid
+
+</li>
+
+<li>
+
+por substituir uma ação ativa
+
+</li>
+
+
+</ul>
+
+Você deve imediatamente:
+
+<ol>
+
+<li>
+
+descartar a carta usada, seja a ativa substituida, ou um Swap Grid/Clear Grid utilizado da mão
+
+</li>
+
+<li>
+
+mover uma carta escondida para slot ativo, se ocorreu substituição
+
+</li>
+
+<li>
+
+comprar nova carta de ação
+
+</li>
+
+<li>
+
+voltar a possuir 2 cartas escondidas
+
+</li>
+
+</ol>
+
+A nova carta pode vir:
+
+<ul>
+
+<li>
+
+do topo do baralho de ações
+
+</li>
+
+<li>
+
+ou do descarte mais recente
+
+</li>
+
+</ul>
+
+</div>
+
+<h2>
+
+Tipos de ação
+
+</h2>
+
+<ul>
+
+<li>
+
+Adicionar células vivas
+
+</li>
+
+<li>
+
+Remover células vivas
+
+</li>
+
+<li>
+
+Swap Grid (trocar posições)
+
+</li>
+
+<li>
+
+Clear Grid (limpar completamente uma região)
+
+</li>
+
+</ul>
+
+</div>
+
+<div class="page">
+
+<h2>
+
+Turno
+
+</h2>
+
+<p>
+
+Cada jogador possui <b>2 ações por turno</b>
+
+</p>
+
+<p>
+
+Para cada ação você pode:
+
+</p>
+
+<ul>
+
+<li>
+
+Usar ação ativa
+
+</li>
+
+<li>
+
+Trocar ação ativa
+
+</li>
+
+<li>
+
+Usar Swap Grid
+
+</li>
+
+<li>
+
+Usar Clear Grid
+
+</li>
+
+</ul>
+
+<h2>
+
+Troca de padrões
+
+</h2>
+
+<p>
+
+Troca de padrões não consome ações.
+
+</p>
+
+<p>
+
+No início do turno você pode descartar 1 padrão.
+
+</p>
+
+<p>
+
+Depois escolha UMA opção:
+
+</p>
+
+<ul>
+
+<li>
+
+Comprar novo padrão do topo
+
+</li>
+
+<li>
+
+Pegar o descarte mais recente
+
+</li>
+
+</ul>
+
+<h2>
+
+Dado
+
+</h2>
+
+<p>
+
+Ao adicionar ou remover células:
+
+</p>
+
+<ol>
+
+<li>
+
+Role o dado
+
+</li>
+
+<li>
+
+Resultado = quantidade máxima
+
+</li>
+
+<li>
+
+Você pode usar menos
+
+</li>
+
+</ol>
+
+<h2>
+
+Resgatando padrões
+
+</h2>
+
+<div class="box">
+
+Você pode resgatar:
+
+<ul>
+
+<li>
+
+No início do seu turno
+
+</li>
+
+<li>
+
+No final do turno de QUALQUER jogador
+
+</li>
+
+<li>
+
+No fim de cada uma das suas ações
+
+</li>
+
+</ul>
+
+É permitido resgatar múltiplos padrões.
+
+</div>
+
+<p>
+
+Ao resgatar:
+
+</p>
+
+<ol>
+
+<li>
+
+revele o padrão
+
+</li>
+
+<li>
+
+coloque na área pontuada
+
+</li>
+
+<li>
+
+compre novo padrão
+
+</li>
+
+</ol>
+
+</div>
+
+<div class="page">
+
+<h2>
+
+Pontuação Provisória
+
+</h2>
+
+<table>
+
+<tr>
+
+<th>Padrão</th>
+
+<th>Pontos</th>
+
+</tr>
+
+<tr><td>Block</td><td>1</td></tr>
+
+<tr><td>Glider</td><td>1</td></tr>
+
+<tr><td>Boat</td><td>2</td></tr>
+
+<tr><td>Tub</td><td>2</td></tr>
+
+<tr><td>Loaf</td><td>2</td></tr>
+
+<tr><td>Beacon</td><td>3</td></tr>
+
+<tr><td>Toad</td><td>3</td></tr>
+
+<tr><td>Tripole</td><td>4</td></tr>
+
+<tr><td>LWSS</td><td>4</td></tr>
+
+<tr><td>Jam</td><td>5</td></tr>
+
+<tr><td>Mold</td><td>5</td></tr>
+
+</table>
+
+<h2>
+
+Fim do jogo
+
+</h2>
+
+<p>
+
+Quando alguém fizer o quinto resgate:
+
+</p>
+
+<ul>
+
+<li>
+
+termine a rodada atual
+
+</li>
+
+<li>
+
+conte pontos
+
+</li>
+
+<li>
+
+maior pontuação vence
+
+</li>
+
+</ul>
+
+<div class="box small">
+
+Estas regras descrevem apenas o modo físico sem iteração automática.
+
+Um modo futuro utilizará app para evoluir grids automaticamente e validar padrões evoluídos.
+
+</div>
+
+</div>
+
+</body>
+
+</html>
