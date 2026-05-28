@@ -1,0 +1,100 @@
+{
+  "patternDeck": [
+    {
+      "id": "glider",
+      "count": 8
+    },
+    {
+      "id": "lwss",
+      "count": 8
+    },
+    {
+      "id": "beacon",
+      "count": 4
+    },
+    {
+      "id": "block",
+      "count": 1
+    },
+    {
+      "id": "boat",
+      "count": 2
+    },
+    {
+      "id": "tub",
+      "count": 1
+    },
+    {
+      "id": "toad",
+      "count": 4
+    },
+    {
+      "id": "mold",
+      "count": 8
+    },
+    {
+      "id": "tripole",
+      "count": 4
+    },
+    {
+      "id": "jam",
+      "count": 6
+    },
+    {
+      "id": "loaf",
+      "count": 2
+    }
+  ],
+  "actionDeck": [
+    {
+      "id": "add-diagonal",
+      "count": 4
+    },
+    {
+      "id": "add-orthogonal",
+      "count": 4
+    },
+    {
+      "id": "add-isolated",
+      "count": 4
+    },
+    {
+      "id": "add-any",
+      "count": 4
+    },
+    {
+      "id": "remove-diagonal",
+      "count": 2
+    },
+    {
+      "id": "remove-orthogonal",
+      "count": 2
+    },
+    {
+      "id": "remove-isolated",
+      "count": 2
+    },
+    {
+      "id": "remove-any",
+      "count": 2
+    },
+    {
+      "id": "swap-grid-tiles",
+      "count": 2
+    },
+    {
+      "id": "clear-grid-tile",
+      "count": 2
+    }
+  ],
+  "extras": [
+    {
+      "id": "pattern-sheet",
+      "count": 6
+    },
+    {
+      "id": "gol-rules-card",
+      "count": 2
+    }
+  ]
+}
