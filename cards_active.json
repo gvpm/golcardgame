@@ -64,27 +64,27 @@
     },
     {
       "id": "remove-diagonal",
-      "count": 2
+      "count": 1
     },
     {
       "id": "remove-orthogonal",
-      "count": 2
+      "count": 1
     },
     {
       "id": "remove-isolated",
-      "count": 2
+      "count": 1
     },
     {
       "id": "remove-any",
-      "count": 2
+      "count": 1
     },
     {
       "id": "swap-grid-tiles",
-      "count": 2
+      "count": 4
     },
     {
       "id": "clear-grid-tile",
-      "count": 2
+      "count": 4
     }
   ],
   "extras": [

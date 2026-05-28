@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Card GOL Rulebook Fisico</title>
+<style>
+body{margin:0;background:#222;font-family:Arial,sans-serif}
+.toolbar{position:sticky;top:0;background:#111;padding:10px}
+button{padding:10px 16px;background:#333;color:#fff;border:none;border-radius:8px}
+.page{width:210mm;height:297mm;background:#fff;margin:20px auto;padding:14mm;box-sizing:border-box;box-shadow:0 0 12px rgba(0,0,0,.3)}
+.box{border:1px solid #ccc;border-radius:10px;padding:4mm;margin-top:2mm}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:6px}
+@media print {.toolbar{display:none}.page{margin:0;box-shadow:none;page-break-after:always}body{background:#fff}}
+</style></head><body>
+<div class='toolbar'><button onclick='window.print()'>Exportar PDF</button></div>
+
+<div class='page'>
+<h1>Card GOL (Game of Life)</h1>
+<p>Modo físico compartilhado sem iteração automática.</p>
+<h2>O que é Conway's Game of Life?</h2>
+<p>Um autômato celular onde células vivas e mortas seguem regras simples.</p>
+<div class='box'><b>Solidão:</b> menos de 2 vizinhos → morre<br><b>Sobrevivência:</b> 2 ou 3 vizinhos → continua viva<br><b>Superpopulação:</b> mais de 3 vizinhos → morre<br><b>Nascimento:</b> exatamente 3 vizinhos → nasce</div>
+<h2>Objetivo</h2>
+<p>Resgatar padrões da sua mão criando exatamente o padrão presente no grid compartilhado atual. O jogo termina quando alguém resgata 5 padrões.</p>
+<h2>Componentes</h2>
+<ul><li>Grid compartilhado 20×14 (4 quadrantes 10×7)</li><li>Baralho de padrões</li><li>Baralho de ações</li><li>Dado D6</li></ul>
+</div>
+
+<div class='page'>
+<h2>Preparação</h2>
+<ol>
+<li>Monte o grid compartilhado dividido em 4 quadrantes numerados de 1 a 4.</li>
+<li>Cada jogador compra 5 padrões.</li>
+<li>Escolha aleatoriamente o primeiro jogador.</li>
+<li>O primeiro jogador pega 12 peças e as joga sobre o grid.</li>
+<li>As peças são posicionadas onde caírem; se encaixarem em múltiplas posições válidas, o jogador escolhe a posição final.</li>
+</ol>
+
+<h2>Quadrantes</h2>
+<div class='box'>
+Os quadrantes são numerados de 1 a 4.<br>
+No início do turno role o D6.<br>
+Resultado par → escolha um dos quadrantes pares.<br>
+Resultado ímpar → escolha um dos quadrantes ímpares.<br>
+Todas as ações daquele turno devem afetar o quadrante escolhido.
+</div>
+</div>
+
+<div class='page'>
+<h2>Turno do Jogador</h2>
+
+<ol>
+<li>Determine o quadrante.</li>
+<li>Compre 2 cartas de ação.</li>
+<li>Escolha UMA para executar.</li>
+<li>Descarte a outra.</li>
+<li>Após executar a ação, descarte a carta usada.</li>
+</ol>
+
+<h2>Regras das ações</h2>
+
+<ul>
+<li>Swap Grid: o quadrante escolhido deve participar da troca.</li>
+<li>Ambos quadrantes envolvidos podem ser girados.</li>
+<li>Clear Grid sempre limpa o quadrante sorteado.</li>
+<li>Add/Remove devem ocorrer dentro do quadrante sorteado.</li>
+</ul>
+
+<div class='box'>
+Ao usar Add ou Remove, role o dado.<br>
+Você pode executar até aquela quantidade, mas pelo menos uma vez se possível.
+</div>
+
+<p>Se nenhuma das duas cartas puder ser executada naquele quadrante, descarte ambas e passe o turno.</p>
+
+<p>Exceção: se o quadrante estiver completamente vazio, antes das ações você pode colocar 1 célula viva em qualquer posição do quadrante.</p>
+
+</div>
+
+<div class='page'>
+<h2>Resgatando Padrões</h2>
+
+<p>
+
+Após concluir sua ação, você pode resgatar padrões.
+
+</p>
+
+<ul>
+
+<li>
+
+Você pode resgatar múltiplos padrões.
+
+</li>
+
+<li>
+
+Os resgates acontecem sequencialmente.
+
+</li>
+
+<li>
+
+Ao resgatar, remova as células utilizadas daquele padrão.
+
+</li>
+
+<li>
+
+O próximo padrão só pode ser resgatado se continuar existindo após a remoção anterior.
+
+</li>
+
+</ul>
+
+<p>
+
+Ao resgatar:
+
+</p>
+
+<ol>
+
+<li>
+
+Revele o padrão.
+
+</li>
+
+<li>
+
+Reserve a carta pontuada.
+
+</li>
+
+<li>
+
+Remova as células daquele padrão do grid.
+
+</li>
+
+</ol>
+
+<p>
+
+No final do turno, compre cartas de padrão até voltar a possuir 5 padrões na mão.
+
+</p>
+
+<div class="box">
+
+Padrões comprados naquele turno NÃO podem ser resgatados naquele mesmo turno.
+
+Ou seja, apenas padrões que estavam na sua mão antes da recompra podem ser resgatados.
+
+</div>
+
+<h2>Pontuação</h2>
+
+<div class='box'>
+Cada padrão vale exatamente a quantidade de células vivas presentes nele.<br>
+Sua pontuação final é a soma das células vivas de todos os padrões resgatados.
+</div>
+
+<h2>Fim do jogo</h2>
+<p>Quando alguém resgatar o quinto padrão, finalize a rodada atual e conte os pontos.</p>
+
+</div>
+
+<div class='page'>
+<h1>Distribuição Atual do Deck</h1>
+
+<h2>Padrões — 48 cartas</h2>
+<table>
+<tr><th>Carta</th><th>Qtd</th></tr>
+<tr><td>Glider</td><td>8</td></tr>
+<tr><td>LWSS</td><td>8</td></tr>
+<tr><td>Beacon</td><td>4</td></tr>
+<tr><td>Block</td><td>1</td></tr>
+<tr><td>Boat</td><td>2</td></tr>
+<tr><td>Tub</td><td>1</td></tr>
+<tr><td>Toad</td><td>4</td></tr>
+<tr><td>Mold</td><td>8</td></tr>
+<tr><td>Tripole</td><td>4</td></tr>
+<tr><td>Jam</td><td>6</td></tr>
+<tr><td>Loaf</td><td>2</td></tr>
+</table>
+
+<h2>Actions — 28 cartas</h2>
+<table>
+<tr><th>Tipo</th><th>Qtd</th></tr>
+<tr><td>Add Diagonal</td><td>4</td></tr>
+<tr><td>Add Orthogonal</td><td>4</td></tr>
+<tr><td>Add Isolated</td><td>4</td></tr>
+<tr><td>Add Any</td><td>4</td></tr>
+<tr><td>Remove Diagonal</td><td>1</td></tr>
+<tr><td>Remove Orthogonal</td><td>1</td></tr>
+<tr><td>Remove Isolated</td><td>1</td></tr>
+<tr><td>Remove Any</td><td>1</td></tr>
+<tr><td>Swap Grid</td><td>4</td></tr>
+<tr><td>Clear Grid</td><td>4</td></tr>
+</table>
+
+<p><b>Total Pattern Cards:</b> 48</p>
+<p><b>Total Action Cards:</b> 28</p>
+</div>
+
+</body></html>
