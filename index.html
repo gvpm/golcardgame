@@ -2068,40 +2068,188 @@
             image.src = URL.createObjectURL(file);
         }
 
-        function detectBoardBounds(imageData, width, height) {
-            const xs = [];
-            const ys = [];
-            const data = imageData.data;
+        function getImageLuma(data, width, x, y) {
+            const index = (y * width + x) * 4;
+            return 0.299 * data[index] + 0.587 * data[index + 1] + 0.114 * data[index + 2];
+        }
 
-            for (let y = 0; y < height; y += 4) {
-                for (let x = 0; x < width; x += 4) {
-                    const index = (y * width + x) * 4;
-                    const r = data[index];
-                    const g = data[index + 1];
-                    const b = data[index + 2];
-                    const max = Math.max(r, g, b);
-                    const min = Math.min(r, g, b);
-                    const lightness = (max + min) / 2;
-                    if (lightness > 70 && max - min < 120) {
-                        xs.push(x);
-                        ys.push(y);
+        function detectOuterBoardBounds(imageData, width, height) {
+            const data = imageData.data;
+            const scaledWidth = Math.min(360, width);
+            const scaledHeight = Math.max(1, Math.round(height * scaledWidth / width));
+            const mask = new Uint8Array(scaledWidth * scaledHeight);
+            const visited = new Uint8Array(mask.length);
+
+            for (let sy = 0; sy < scaledHeight; sy++) {
+                const y = Math.min(height - 1, Math.floor((sy + 0.5) * height / scaledHeight));
+                for (let sx = 0; sx < scaledWidth; sx++) {
+                    const x = Math.min(width - 1, Math.floor((sx + 0.5) * width / scaledWidth));
+                    mask[sy * scaledWidth + sx] = getImageLuma(data, width, x, y) < 65 ? 1 : 0;
+                }
+            }
+
+            let best = null;
+            const queueX = [];
+            const queueY = [];
+
+            for (let sy = 0; sy < scaledHeight; sy++) {
+                for (let sx = 0; sx < scaledWidth; sx++) {
+                    const startIndex = sy * scaledWidth + sx;
+                    if (!mask[startIndex] || visited[startIndex]) continue;
+
+                    let head = 0;
+                    let area = 0;
+                    let minX = sx;
+                    let maxX = sx;
+                    let minY = sy;
+                    let maxY = sy;
+                    let touchesEdge = false;
+                    queueX.length = 0;
+                    queueY.length = 0;
+                    queueX.push(sx);
+                    queueY.push(sy);
+                    visited[startIndex] = 1;
+
+                    while (head < queueX.length) {
+                        const x = queueX[head];
+                        const y = queueY[head];
+                        head += 1;
+                        area += 1;
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                        minY = Math.min(minY, y);
+                        maxY = Math.max(maxY, y);
+                        touchesEdge = touchesEdge || x === 0 || y === 0 || x === scaledWidth - 1 || y === scaledHeight - 1;
+
+                        const neighbors = [
+                            [x + 1, y],
+                            [x - 1, y],
+                            [x, y + 1],
+                            [x, y - 1]
+                        ];
+                        neighbors.forEach(([nextX, nextY]) => {
+                            if (nextX < 0 || nextX >= scaledWidth || nextY < 0 || nextY >= scaledHeight) return;
+                            const nextIndex = nextY * scaledWidth + nextX;
+                            if (!mask[nextIndex] || visited[nextIndex]) return;
+                            visited[nextIndex] = 1;
+                            queueX.push(nextX);
+                            queueY.push(nextY);
+                        });
+                    }
+
+                    const componentWidth = maxX - minX + 1;
+                    const componentHeight = maxY - minY + 1;
+                    const ratio = componentWidth / componentHeight;
+                    const boardLike =
+                        !touchesEdge &&
+                        area > 300 &&
+                        componentWidth > scaledWidth * 0.25 &&
+                        componentHeight > scaledHeight * 0.25 &&
+                        ratio > 1.05 &&
+                        ratio < 1.8;
+
+                    if (boardLike && (!best || area > best.area)) {
+                        best = { area, minX, maxX, minY, maxY };
                     }
                 }
             }
 
-            if (xs.length < 200) {
-                return { left: 0, top: 0, right: width, bottom: height };
+            if (!best) {
+                return {
+                    left: width * 0.08,
+                    top: height * 0.08,
+                    right: width * 0.92,
+                    bottom: height * 0.92
+                };
             }
 
-            xs.sort((a, b) => a - b);
-            ys.sort((a, b) => a - b);
-            const q = (values, ratio) => values[Math.min(values.length - 1, Math.max(0, Math.floor(values.length * ratio)))];
-            const left = q(xs, 0.03);
-            const right = q(xs, 0.995);
-            const top = q(ys, 0.03);
-            const bottom = q(ys, 0.995);
+            return {
+                left: best.minX * width / scaledWidth,
+                top: best.minY * height / scaledHeight,
+                right: (best.maxX + 1) * width / scaledWidth,
+                bottom: (best.maxY + 1) * height / scaledHeight
+            };
+        }
 
-            return { left, top, right, bottom };
+        function smoothProfile(values, radius) {
+            return values.map((_, index) => {
+                let sum = 0;
+                let count = 0;
+                const start = Math.max(0, index - radius);
+                const end = Math.min(values.length - 1, index + radius);
+                for (let i = start; i <= end; i++) {
+                    sum += values[i];
+                    count += 1;
+                }
+                return count ? sum / count : 0;
+            });
+        }
+
+        function findProfileEdge(profile, start, end, threshold, findLast) {
+            let found = null;
+            if (findLast) {
+                for (let i = start; i <= end; i++) {
+                    if (profile[i] > threshold) {
+                        found = i;
+                    }
+                }
+            } else {
+                for (let i = start; i <= end; i++) {
+                    if (profile[i] > threshold) {
+                        found = i;
+                        break;
+                    }
+                }
+            }
+            return found;
+        }
+
+        function detectGridBounds(imageData, width, height, outerBounds) {
+            const data = imageData.data;
+            const left = Math.max(0, Math.floor(outerBounds.left));
+            const top = Math.max(0, Math.floor(outerBounds.top));
+            const right = Math.min(width, Math.ceil(outerBounds.right));
+            const bottom = Math.min(height, Math.ceil(outerBounds.bottom));
+            const boardWidth = Math.max(1, right - left);
+            const boardHeight = Math.max(1, bottom - top);
+            const colDark = Array(boardWidth).fill(0);
+            const rowDark = Array(boardHeight).fill(0);
+            const darkThreshold = 75;
+
+            for (let y = top; y < bottom; y++) {
+                let rowCount = 0;
+                for (let x = left; x < right; x++) {
+                    const dark = getImageLuma(data, width, x, y) < darkThreshold ? 1 : 0;
+                    colDark[x - left] += dark;
+                    rowCount += dark;
+                }
+                rowDark[y - top] = rowCount / boardWidth;
+            }
+
+            for (let x = 0; x < boardWidth; x++) {
+                colDark[x] /= boardHeight;
+            }
+
+            const colProfile = smoothProfile(colDark, Math.max(6, Math.round(boardWidth * 0.015)));
+            const rowProfile = smoothProfile(rowDark, Math.max(6, Math.round(boardHeight * 0.02)));
+            const threshold = 0.72;
+            const padding = Math.max(5, Math.round(Math.min(boardWidth, boardHeight) * 0.014));
+            const leftEdge = findProfileEdge(colProfile, 0, Math.floor(boardWidth * 0.38), threshold, true);
+            const rightEdge = findProfileEdge(colProfile, Math.ceil(boardWidth * 0.62), boardWidth - 1, threshold, false);
+            const topEdge = findProfileEdge(rowProfile, 0, Math.floor(boardHeight * 0.38), threshold, true);
+            const bottomEdge = findProfileEdge(rowProfile, Math.ceil(boardHeight * 0.62), boardHeight - 1, threshold, false);
+
+            const gridLeft = left + (leftEdge === null ? boardWidth * 0.12 : leftEdge + padding);
+            const gridRight = left + (rightEdge === null ? boardWidth * 0.88 : rightEdge - padding);
+            const gridTop = top + (topEdge === null ? boardHeight * 0.12 : topEdge + padding);
+            const gridBottom = top + (bottomEdge === null ? boardHeight * 0.88 : bottomEdge - padding);
+
+            return {
+                left: Math.max(left, Math.min(gridLeft, right - 10)),
+                top: Math.max(top, Math.min(gridTop, bottom - 10)),
+                right: Math.min(right, Math.max(gridRight, left + 10)),
+                bottom: Math.min(bottom, Math.max(gridBottom, top + 10))
+            };
         }
 
         function analyzeGridImage(sourceCanvas) {
@@ -2116,7 +2264,7 @@
             const width = sourceCanvas.width;
             const height = sourceCanvas.height;
             const imageData = sourceCtx.getImageData(0, 0, width, height);
-            const bounds = detectBoardBounds(imageData, width, height);
+            const bounds = detectGridBounds(imageData, width, height, detectOuterBoardBounds(imageData, width, height));
             const boardWidth = Math.max(1, bounds.right - bounds.left);
             const boardHeight = Math.max(1, bounds.bottom - bounds.top);
             const scores = [];
@@ -2127,10 +2275,10 @@
                     const cellTop = bounds.top + boardHeight * row / ROWS;
                     const cellW = boardWidth / COLS;
                     const cellH = boardHeight / ROWS;
-                    const sampleLeft = Math.floor(cellLeft + cellW * 0.34);
-                    const sampleRight = Math.ceil(cellLeft + cellW * 0.66);
-                    const sampleTop = Math.floor(cellTop + cellH * 0.34);
-                    const sampleBottom = Math.ceil(cellTop + cellH * 0.66);
+                    const sampleLeft = Math.floor(cellLeft + cellW * 0.28);
+                    const sampleRight = Math.ceil(cellLeft + cellW * 0.72);
+                    const sampleTop = Math.floor(cellTop + cellH * 0.28);
+                    const sampleBottom = Math.ceil(cellTop + cellH * 0.72);
                     const lumas = [];
 
                     for (let y = sampleTop; y < sampleBottom; y++) {
@@ -2173,9 +2321,9 @@
 
             scores.forEach((score) => {
                 const live =
-                    (score.dark35 > 0.45 && score.dark50 > 0.62 && score.median < 60) ||
-                    (score.dark50 > 0.72 && score.median < 54) ||
-                    (score.dark85 > 0.9 && score.p10 < 28 && score.median < 52);
+                    (score.dark85 > 0.65 && score.median < 80) ||
+                    (score.dark50 > 0.72 && score.median < 62) ||
+                    (score.dark35 > 0.42 && score.dark65 > 0.68 && score.median < 72);
                 if (live) {
                     nextGrid[score.row][score.col] = 1;
                     liveCount += 1;
