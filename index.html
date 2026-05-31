@@ -2143,13 +2143,58 @@
                     const boardLike =
                         !touchesEdge &&
                         area > 300 &&
-                        componentWidth > scaledWidth * 0.25 &&
-                        componentHeight > scaledHeight * 0.25 &&
-                        ratio > 1.05 &&
-                        ratio < 1.8;
+                        componentWidth > scaledWidth * 0.18 &&
+                        componentHeight > scaledHeight * 0.18 &&
+                        ratio > 0.45 &&
+                        ratio < 2.2;
 
                     if (boardLike && (!best || area > best.area)) {
-                        best = { area, minX, maxX, minY, maxY };
+                        let sumX = 0;
+                        let sumY = 0;
+                        for (let i = 0; i < queueX.length; i++) {
+                            sumX += queueX[i];
+                            sumY += queueY[i];
+                        }
+
+                        const meanX = sumX / queueX.length;
+                        const meanY = sumY / queueY.length;
+                        let covXX = 0;
+                        let covYY = 0;
+                        let covXY = 0;
+
+                        for (let i = 0; i < queueX.length; i++) {
+                            const dx = queueX[i] - meanX;
+                            const dy = queueY[i] - meanY;
+                            covXX += dx * dx;
+                            covYY += dy * dy;
+                            covXY += dx * dy;
+                        }
+
+                        covXX /= queueX.length;
+                        covYY /= queueX.length;
+                        covXY /= queueX.length;
+
+                        let angleRadians = 0.5 * Math.atan2(2 * covXY, covXX - covYY);
+                        while (angleRadians <= -Math.PI / 2) angleRadians += Math.PI;
+                        while (angleRadians > Math.PI / 2) angleRadians -= Math.PI;
+
+                        const cos = Math.cos(angleRadians);
+                        const sin = Math.sin(angleRadians);
+                        let minU = Infinity;
+                        let maxU = -Infinity;
+                        let minV = Infinity;
+                        let maxV = -Infinity;
+
+                        for (let i = 0; i < queueX.length; i++) {
+                            const u = queueX[i] * cos + queueY[i] * sin;
+                            const v = -queueX[i] * sin + queueY[i] * cos;
+                            minU = Math.min(minU, u);
+                            maxU = Math.max(maxU, u);
+                            minV = Math.min(minV, v);
+                            maxV = Math.max(maxV, v);
+                        }
+
+                        best = { area, minX, maxX, minY, maxY, angleRadians, minU, maxU, minV, maxV };
                     }
                 }
             }
@@ -2163,12 +2208,52 @@
                 };
             }
 
+            const scale = width / scaledWidth;
+
             return {
                 left: best.minX * width / scaledWidth,
                 top: best.minY * height / scaledHeight,
                 right: (best.maxX + 1) * width / scaledWidth,
-                bottom: (best.maxY + 1) * height / scaledHeight
+                bottom: (best.maxY + 1) * height / scaledHeight,
+                angleRadians: best.angleRadians,
+                minU: best.minU * scale,
+                maxU: best.maxU * scale,
+                minV: best.minV * scale,
+                maxV: best.maxV * scale
             };
+        }
+
+        function normalizeBoardCanvas(sourceCanvas) {
+            const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+            const sourceData = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+            const orientation = detectOuterBoardBounds(sourceData, sourceCanvas.width, sourceCanvas.height);
+            const angle = orientation.angleRadians || 0;
+
+            if (!Number.isFinite(orientation.minU) || !Number.isFinite(orientation.maxU) || !Number.isFinite(orientation.minV) || !Number.isFinite(orientation.maxV)) {
+                return sourceCanvas;
+            }
+
+            if (Math.abs(angle) < 0.035 && sourceCanvas.width >= sourceCanvas.height) {
+                return sourceCanvas;
+            }
+
+            const boardWidth = Math.max(1, orientation.maxU - orientation.minU);
+            const boardHeight = Math.max(1, orientation.maxV - orientation.minV);
+            const padding = Math.max(24, Math.round(Math.min(boardWidth, boardHeight) * 0.05));
+            const normalizedCanvas = document.createElement('canvas');
+            normalizedCanvas.width = Math.ceil(boardWidth + padding * 2);
+            normalizedCanvas.height = Math.ceil(boardHeight + padding * 2);
+
+            const ctx = normalizedCanvas.getContext('2d');
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, normalizedCanvas.width, normalizedCanvas.height);
+            ctx.setTransform(cos, -sin, sin, cos, -orientation.minU + padding, -orientation.minV + padding);
+            ctx.drawImage(sourceCanvas, 0, 0);
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            return normalizedCanvas;
         }
 
         function smoothProfile(values, radius) {
@@ -2260,9 +2345,10 @@
                 resizeCanvas();
             }
 
-            const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
-            const width = sourceCanvas.width;
-            const height = sourceCanvas.height;
+            const normalizedCanvas = normalizeBoardCanvas(sourceCanvas);
+            const sourceCtx = normalizedCanvas.getContext('2d', { willReadFrequently: true });
+            const width = normalizedCanvas.width;
+            const height = normalizedCanvas.height;
             const imageData = sourceCtx.getImageData(0, 0, width, height);
             const bounds = detectGridBounds(imageData, width, height, detectOuterBoardBounds(imageData, width, height));
             const boardWidth = Math.max(1, bounds.right - bounds.left);
