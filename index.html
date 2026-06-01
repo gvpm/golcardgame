@@ -652,6 +652,43 @@
             font-size: 0.86rem;
         }
 
+        .pattern-tip-list {
+            display: grid;
+            gap: 7px;
+            margin-top: 8px;
+            text-align: left;
+        }
+
+        .pattern-tip-item {
+            display: grid;
+            grid-template-columns: 10px 1fr;
+            gap: 8px;
+            align-items: start;
+            padding: 7px 8px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .pattern-tip-dot {
+            width: 9px;
+            height: 9px;
+            margin-top: 3px;
+            border-radius: 999px;
+        }
+
+        .pattern-tip-item b {
+            display: block;
+            margin-bottom: 2px;
+            font-size: 0.82rem;
+        }
+
+        .pattern-tip-item small {
+            display: block;
+            color: var(--muted);
+            font-size: 0.76rem;
+            line-height: 1.35;
+        }
+
         .camera-modal {
             position: fixed;
             inset: 0;
@@ -1105,19 +1142,20 @@
         let longPressActive = false;
         let patternOverlay = null;
         let analysisMode = false;
-        let allowOverlappingPatterns = false;
+        let allowOverlappingPatterns = true;
         let pendingCameraGrid = null;
         const patternColorPalette = [
-            { fill: 'rgba(125, 211, 167, 0.18)', stroke: 'rgba(125, 211, 167, 0.94)', solid: '#7dd3a7' },
-            { fill: 'rgba(96, 165, 250, 0.16)', stroke: 'rgba(96, 165, 250, 0.94)', solid: '#60a5fa' },
-            { fill: 'rgba(250, 204, 21, 0.16)', stroke: 'rgba(250, 204, 21, 0.94)', solid: '#facc15' },
-            { fill: 'rgba(192, 132, 252, 0.16)', stroke: 'rgba(192, 132, 252, 0.94)', solid: '#c084fc' },
-            { fill: 'rgba(244, 114, 182, 0.16)', stroke: 'rgba(244, 114, 182, 0.94)', solid: '#f472b6' },
-            { fill: 'rgba(251, 146, 60, 0.16)', stroke: 'rgba(251, 146, 60, 0.94)', solid: '#fb923c' },
-            { fill: 'rgba(45, 212, 191, 0.16)', stroke: 'rgba(45, 212, 191, 0.94)', solid: '#2dd4bf' },
-            { fill: 'rgba(248, 113, 113, 0.16)', stroke: 'rgba(248, 113, 113, 0.94)', solid: '#f87171' },
-            { fill: 'rgba(129, 140, 248, 0.16)', stroke: 'rgba(129, 140, 248, 0.94)', solid: '#818cf8' },
-            { fill: 'rgba(52, 211, 153, 0.16)', stroke: 'rgba(52, 211, 153, 0.94)', solid: '#34d399' }
+            { fill: 'rgba(34, 197, 94, 0.18)', stroke: 'rgba(34, 197, 94, 0.96)', solid: '#22c55e' },
+            { fill: 'rgba(59, 130, 246, 0.17)', stroke: 'rgba(59, 130, 246, 0.96)', solid: '#3b82f6' },
+            { fill: 'rgba(234, 179, 8, 0.18)', stroke: 'rgba(234, 179, 8, 0.96)', solid: '#eab308' },
+            { fill: 'rgba(168, 85, 247, 0.17)', stroke: 'rgba(168, 85, 247, 0.96)', solid: '#a855f7' },
+            { fill: 'rgba(236, 72, 153, 0.17)', stroke: 'rgba(236, 72, 153, 0.96)', solid: '#ec4899' },
+            { fill: 'rgba(249, 115, 22, 0.17)', stroke: 'rgba(249, 115, 22, 0.96)', solid: '#f97316' },
+            { fill: 'rgba(20, 184, 166, 0.17)', stroke: 'rgba(20, 184, 166, 0.96)', solid: '#14b8a6' },
+            { fill: 'rgba(239, 68, 68, 0.17)', stroke: 'rgba(239, 68, 68, 0.96)', solid: '#ef4444' },
+            { fill: 'rgba(99, 102, 241, 0.17)', stroke: 'rgba(99, 102, 241, 0.96)', solid: '#6366f1' },
+            { fill: 'rgba(6, 182, 212, 0.18)', stroke: 'rgba(6, 182, 212, 0.98)', solid: '#06b6d4' },
+            { fill: 'rgba(245, 158, 11, 0.18)', stroke: 'rgba(245, 158, 11, 0.98)', solid: '#f59e0b' }
         ];
         const patternColors = {};
 
@@ -1211,27 +1249,28 @@
         function drawPatternOverlay() {
             if (!analysisMode || !patternOverlay || !patternOverlay.matches.length) return;
 
-            for (const match of patternOverlay.matches) {
+            patternOverlay.matches.forEach((match, index) => {
                 const colors = patternColors[match.family] || patternColors.LWSS;
                 const fillColor = colors.fill;
                 const strokeColor = colors.stroke;
+                const inset = 1 + (index % 5) * Math.max(1.5, cellSize * 0.055);
 
                 ctx.fillStyle = fillColor;
                 ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = 2;
+                ctx.lineWidth = Math.max(2, cellSize * 0.045);
 
-                for (const [cellRow, cellCol] of match.footprintCells) {
+                for (const [cellRow, cellCol] of match.liveCells) {
                     const x = gridOriginX + cellCol * cellSize;
                     const y = gridOriginY + cellRow * cellSize;
                     ctx.fillRect(x, y, cellSize, cellSize);
                     ctx.strokeRect(
-                        x + 1,
-                        y + 1,
-                        Math.max(cellSize - 2, 1),
-                        Math.max(cellSize - 2, 1)
+                        x + inset,
+                        y + inset,
+                        Math.max(cellSize - inset * 2, 1),
+                        Math.max(cellSize - inset * 2, 1)
                     );
                 }
-            }
+            });
         }
 
         function countNeighbors(row, col) {
@@ -1530,6 +1569,10 @@
             return rotated;
         }
 
+        function rotatePattern180(pattern) {
+            return rotatePattern(rotatePattern(pattern));
+        }
+
         function mirrorPattern(pattern) {
             return pattern.map((row) => row.slice().reverse());
         }
@@ -1598,23 +1641,20 @@
         }
 
         function getPatternTransforms(def) {
-            const seeds = [clonePattern(def.pattern)];
+            const seeds = [clonePattern(def.pattern), rotatePattern180(def.pattern)];
             if (def.mirrors) {
-                seeds.push(mirrorPattern(def.pattern));
+                const mirrored = mirrorPattern(def.pattern);
+                seeds.push(mirrored, rotatePattern180(mirrored));
             }
 
             const transforms = [];
             const seen = new Set();
             for (const seed of seeds) {
-                let current = trimPattern(seed);
-                for (let rotation = 0; rotation < 4; rotation++) {
-                    const trimmed = trimPattern(current);
-                    const key = patternKey(trimmed);
-                    if (!seen.has(key)) {
-                        seen.add(key);
-                        transforms.push(trimmed);
-                    }
-                    current = rotatePattern(current);
+                const trimmed = trimPattern(seed);
+                const key = patternKey(trimmed);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    transforms.push(trimmed);
                 }
             }
             return transforms;
@@ -1629,7 +1669,7 @@
                 let current = trimPattern(transformed);
                 for (let phase = 0; phase < phaseCount; phase++) {
                     const trimmed = trimPattern(current);
-                    const key = def.name + '|' + phase + '|' + patternKey(trimmed);
+                            const key = def.name + '|' + patternKey(trimmed);
                     if (!seen.has(key)) {
                         seen.add(key);
                         variants.push({
@@ -1769,6 +1809,10 @@
                         [targetRow, targetCol] = normalizeGridPosition(targetRow, targetCol);
                     } else if (targetRow < 0 || targetRow >= ROWS || targetCol < 0 || targetCol >= COLS) {
                         return false;
+                    }
+
+                    if (allowOverlappingPatterns && variant.family === 'Loaf' && !expected && grid[targetRow][targetCol]) {
+                        continue;
                     }
 
                     if (grid[targetRow][targetCol] !== expected) {
@@ -1929,24 +1973,68 @@
                 header.appendChild(title);
 
                 const details = document.createElement('span');
-                details.textContent =
-                    'Fase ' + (match.phase + 1) +
-                    ' | linha ' + (match.row + 1) +
-                    ' | coluna ' + (match.col + 1) +
-                    ' | area ' + match.width + 'x' + match.height;
+                details.textContent = formatPatternMatchDetails(match);
                 item.appendChild(header);
                 item.appendChild(details);
                 patternList.appendChild(item);
             });
         }
 
-        function showPatternTip(match) {
-            patternTipTitle.style.color = patternColors[match.family]?.solid || '#ffffff';
-            patternTipTitle.textContent = match.family + ' | fase ' + (match.phase + 1);
-            patternTipBody.textContent =
-                'Linha ' + (match.row + 1) +
+        function formatPatternMatchDetails(match) {
+            return 'Fase ' + (match.phase + 1) +
+                ' | linha ' + (match.row + 1) +
                 ' | coluna ' + (match.col + 1) +
                 ' | area ' + match.width + 'x' + match.height;
+        }
+
+        function showPatternTip(matches) {
+            const visibleMatches = Array.isArray(matches) ? matches : [matches];
+            if (!visibleMatches.length) return;
+
+            if (visibleMatches.length === 1) {
+                const match = visibleMatches[0];
+                patternTipTitle.style.color = patternColors[match.family]?.solid || '#ffffff';
+                patternTipTitle.textContent = match.family + ' | fase ' + (match.phase + 1);
+                patternTipBody.textContent =
+                    'Linha ' + (match.row + 1) +
+                    ' | coluna ' + (match.col + 1) +
+                    ' | area ' + match.width + 'x' + match.height;
+                patternTip.classList.add('open');
+                return;
+            }
+
+            patternTipTitle.style.color = '#ffffff';
+            patternTipTitle.textContent = visibleMatches.length + ' padroes nesta celula';
+            patternTipBody.innerHTML = '';
+
+            const list = document.createElement('div');
+            list.className = 'pattern-tip-list';
+
+            visibleMatches.forEach((match) => {
+                const colors = patternColors[match.family] || patternColors.LWSS;
+                const item = document.createElement('div');
+                item.className = 'pattern-tip-item';
+
+                const dot = document.createElement('span');
+                dot.className = 'pattern-tip-dot';
+                dot.style.background = colors.solid;
+
+                const text = document.createElement('div');
+                const name = document.createElement('b');
+                name.style.color = colors.solid;
+                name.textContent = match.family + ' | fase ' + (match.phase + 1);
+
+                const details = document.createElement('small');
+                details.textContent = formatPatternMatchDetails(match);
+
+                text.appendChild(name);
+                text.appendChild(details);
+                item.appendChild(dot);
+                item.appendChild(text);
+                list.appendChild(item);
+            });
+
+            patternTipBody.appendChild(list);
             patternTip.classList.add('open');
         }
 
@@ -2000,12 +2088,16 @@
             hidePatternTip();
         }
 
-        function findPatternAtCell(row, col) {
-            if (!analysisMode || !patternOverlay) return null;
+        function findPatternsAtCell(row, col) {
+            if (!analysisMode || !patternOverlay) return [];
 
-            return patternOverlay.matches.find((match) =>
-                match.footprintCells.some(([cellRow, cellCol]) => cellRow === row && cellCol === col)
-            ) || null;
+            return patternOverlay.matches.filter((match) =>
+                match.liveCells.some(([cellRow, cellCol]) => cellRow === row && cellCol === col)
+            ).sort((a, b) => {
+                const areaDiff = (b.width * b.height) - (a.width * a.height);
+                if (areaDiff !== 0) return areaDiff;
+                return a.family.localeCompare(b.family);
+            });
         }
 
         async function toggleFullscreen() {
@@ -2689,8 +2781,8 @@
             const row = Math.floor((y - gridOriginY) / cellSize);
 
             if (analysisMode) {
-                const found = findPatternAtCell(row, col);
-                if (found) {
+                const found = findPatternsAtCell(row, col);
+                if (found.length) {
                     showPatternTip(found);
                     return;
                 }
