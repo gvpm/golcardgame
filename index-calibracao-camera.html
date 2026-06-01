@@ -1,0 +1,2733 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0a0d11">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Gol Card Game">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <title>Gol Card Game</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #111418;
+            --panel: rgba(20, 25, 31, 0.88);
+            --panel-strong: rgba(10, 14, 19, 0.94);
+            --line: rgba(255, 255, 255, 0.08);
+            --text: #f4f7fb;
+            --muted: #a5b2c2;
+            --accent: #7dd3a7;
+            --accent-strong: #44a06c;
+            --dead: #0d1014;
+            --alive: #f4f7fb;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at top left, rgba(125, 211, 167, 0.12), transparent 26%),
+                linear-gradient(135deg, #0a0d11, #131922 55%, #1a222d);
+            color: var(--text);
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body.inverted-ui {
+            color-scheme: light;
+            --panel: rgba(248, 250, 252, 0.9);
+            --panel-strong: rgba(255, 255, 255, 0.96);
+            --line: rgba(15, 23, 42, 0.18);
+            --text: #0f172a;
+            --muted: #334155;
+        }
+
+        #game {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        .mobile-hint {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            padding: 24px;
+            background: rgba(6, 9, 12, 0.82);
+            color: var(--text);
+            text-align: center;
+            font-size: 1rem;
+            line-height: 1.5;
+            backdrop-filter: blur(10px);
+        }
+
+        .top-menu,
+        .menu,
+        .step-control {
+            position: fixed;
+            z-index: 10;
+            transition: opacity 180ms ease;
+        }
+
+        .ui-hidden .top-menu,
+        .ui-hidden .menu,
+        .ui-hidden .step-control,
+        .ui-hidden .hud {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .analysis-mode .top-menu,
+        .analysis-mode .menu,
+        .analysis-mode .hud {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .top-menu {
+            top: calc(12px + env(safe-area-inset-top, 0px));
+            right: calc(12px + env(safe-area-inset-right, 0px));
+        }
+
+        .menu {
+            left: calc(12px + env(safe-area-inset-left, 0px));
+            bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .step-control {
+            right: calc(12px + env(safe-area-inset-right, 0px));
+            bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .step-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .menu-toggle {
+            width: 76px;
+            height: 76px;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            background: var(--panel-strong);
+            color: var(--text);
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+        }
+
+        .menu-panel {
+            display: none;
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 10px);
+            padding: 12px;
+            min-width: 180px;
+            max-width: min(76vw, 280px);
+            max-height: min(58vh, 420px);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--panel);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+            overflow-y: auto;
+        }
+
+        .menu-panel.open {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        #top-menu-panel {
+            top: calc(100% + 10px);
+            bottom: auto;
+            left: auto;
+            right: 0;
+        }
+
+        .menu-panel button {
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text);
+            padding: 9px 12px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+
+        .menu-inline-panel {
+            display: none;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .menu-inline-panel.open {
+            display: block;
+        }
+
+        .menu-inline-panel label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .menu-inline-panel input[type="range"] {
+            width: 100%;
+        }
+
+        .insert-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .insert-option {
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            cursor: pointer;
+        }
+
+        .insert-option span {
+            display: block;
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.72rem;
+            text-align: center;
+        }
+
+        .step-button {
+            width: 70px;
+            height: 70px;
+            border: 1px solid rgba(125, 211, 167, 0.24);
+            border-radius: 50%;
+            background: rgba(125, 211, 167, 0.14);
+            color: var(--text);
+            font-size: 2.15rem;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
+        }
+
+        .pattern-button,
+        .camera-button {
+            width: 70px;
+            height: 70px;
+            border: 1px solid rgba(244, 247, 251, 0.16);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
+        }
+
+        .pattern-button.active,
+        .camera-button.active {
+            background: rgba(125, 211, 167, 0.16);
+            border-color: rgba(125, 211, 167, 0.3);
+        }
+
+        .pattern-details-button {
+            min-width: 92px;
+            height: 54px;
+            padding: 0 16px;
+            border: 1px solid rgba(244, 247, 251, 0.14);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+        }
+
+        .pattern-catalog-button {
+            min-width: 88px;
+            height: 52px;
+            padding: 0 16px;
+            border: 1px solid rgba(244, 247, 251, 0.14);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+        }
+
+        .pattern-catalog-panel {
+            position: absolute;
+            right: 0;
+            bottom: calc(100% + 18px);
+            display: none;
+            width: min(90vw, 420px);
+            max-height: min(72vh, 560px);
+            overflow-y: auto;
+            padding: 16px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: rgba(10, 14, 19, 0.96);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+        }
+
+        .pattern-catalog-panel.open {
+            display: block;
+        }
+
+        .pattern-catalog-header {
+            margin-bottom: 14px;
+        }
+
+        .pattern-catalog-header strong {
+            display: block;
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+
+        .pattern-catalog-header span {
+            color: var(--muted);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .pattern-catalog-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .pattern-catalog-group {
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .pattern-catalog-group h3 {
+            margin: 0 0 10px;
+            font-size: 0.95rem;
+        }
+
+        .pattern-catalog-variants {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .pattern-catalog-item {
+            width: 84px;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            text-align: center;
+        }
+
+        .pattern-preview-frame {
+            width: 100%;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pattern-catalog-item span {
+            display: block;
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.75rem;
+        }
+
+        .pattern-preview-svg {
+            display: block;
+            width: auto;
+            height: 100%;
+            max-width: 100%;
+        }
+
+        .pattern-details-button[hidden] {
+            display: none;
+        }
+
+        .menu-panel button:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        body.inverted-ui .menu-panel button,
+        body.inverted-ui .menu-inline-panel,
+        body.inverted-ui .insert-option,
+        body.inverted-ui .pattern-button,
+        body.inverted-ui .camera-button,
+        body.inverted-ui .pattern-details-button,
+        body.inverted-ui .pattern-catalog-button,
+        body.inverted-ui .step-button,
+        body.inverted-ui .pattern-card,
+        body.inverted-ui .pattern-catalog-panel,
+        body.inverted-ui .pattern-catalog-group,
+        body.inverted-ui .pattern-catalog-item,
+        body.inverted-ui .pattern-summary-item,
+        body.inverted-ui .pattern-entry,
+        body.inverted-ui .pattern-controls,
+        body.inverted-ui .pattern-tip,
+        body.inverted-ui .pattern-close,
+        body.inverted-ui .hud {
+            border-color: rgba(15, 23, 42, 0.16);
+            background: rgba(255, 255, 255, 0.9);
+            color: #0f172a;
+        }
+
+        body.inverted-ui .menu-panel button:hover {
+            background: rgba(15, 23, 42, 0.08);
+        }
+
+        body.inverted-ui .pattern-catalog-header span,
+        body.inverted-ui .pattern-catalog-item span,
+        body.inverted-ui .insert-option span,
+        body.inverted-ui .pattern-card-header p,
+        body.inverted-ui .pattern-controls span,
+        body.inverted-ui .pattern-summary-item span,
+        body.inverted-ui .pattern-entry span,
+        body.inverted-ui .pattern-empty,
+        body.inverted-ui .pattern-tip span,
+        body.inverted-ui .hud {
+            color: #334155;
+        }
+
+        .menu-panel button[hidden] {
+            display: none;
+        }
+
+        #close-overlay {
+            background: rgba(125, 211, 167, 0.12);
+            border-color: rgba(125, 211, 167, 0.25);
+        }
+
+        .overlay-card {
+            position: relative;
+            z-index: 5;
+            width: min(86vw, 380px);
+            margin: calc(64px + env(safe-area-inset-top, 0px)) auto 0;
+            padding: 22px 20px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+        }
+
+        .overlay-card h1 {
+            margin: 0;
+            font-size: clamp(1.8rem, 3vw, 2.7rem);
+            line-height: 1.05;
+        }
+
+        .overlay-card p {
+            margin: 14px 0 0;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .pattern-modal {
+            position: fixed;
+            top: calc(12px + env(safe-area-inset-top, 0px));
+            right: calc(12px + env(safe-area-inset-right, 0px));
+            z-index: 14;
+            display: none;
+            align-items: flex-start;
+            justify-content: flex-end;
+            pointer-events: none;
+        }
+
+        .pattern-modal.open {
+            display: flex;
+        }
+
+        .pattern-card {
+            width: min(88vw, 420px);
+            max-height: min(72vh, 540px);
+            overflow-y: auto;
+            padding: 20px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: rgba(10, 14, 19, 0.96);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+            pointer-events: auto;
+        }
+
+        .pattern-card.hidden {
+            display: none;
+        }
+
+        .pattern-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .pattern-card-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+        .pattern-card-header p {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .pattern-close {
+            width: 46px;
+            height: 46px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            font-size: 1.2rem;
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+
+        .pattern-summary {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .pattern-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .pattern-controls span {
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+
+        .pattern-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+            font-size: 0.86rem;
+            user-select: none;
+        }
+
+        .pattern-switch input {
+            width: 18px;
+            height: 18px;
+            margin: 0;
+        }
+
+        .pattern-summary-item {
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .pattern-summary-item strong {
+            display: block;
+            font-size: 1.35rem;
+            margin-bottom: 4px;
+        }
+
+        .pattern-summary-item span {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .pattern-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .pattern-entry {
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .pattern-entry-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .pattern-color-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+        }
+
+        .pattern-entry strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.96rem;
+        }
+
+        .pattern-entry span {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .pattern-empty {
+            padding: 14px;
+            border: 1px dashed rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .pattern-tip {
+            position: fixed;
+            left: 50%;
+            bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+            transform: translateX(-50%);
+            z-index: 15;
+            display: none;
+            min-width: min(82vw, 280px);
+            max-width: min(90vw, 360px);
+            padding: 12px 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            background: rgba(10, 14, 19, 0.96);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+            text-align: center;
+        }
+
+        .pattern-tip.open {
+            display: block;
+        }
+
+        .pattern-tip strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.98rem;
+        }
+
+        .pattern-tip span {
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .camera-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(3, 7, 12, 0.78);
+            backdrop-filter: blur(12px);
+        }
+
+        .camera-modal.open {
+            display: flex;
+        }
+
+        .camera-card {
+            width: min(94vw, 640px);
+            max-height: min(92vh, 720px);
+            overflow-y: auto;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: rgba(10, 14, 19, 0.96);
+            box-shadow: 0 18px 58px rgba(0, 0, 0, 0.46);
+        }
+
+        .camera-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .camera-header h2 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .camera-header p,
+        .camera-status {
+            margin: 4px 0 0;
+            color: var(--muted);
+            font-size: 0.88rem;
+            line-height: 1.4;
+        }
+
+        .camera-close {
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            font-size: 1.2rem;
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+
+        .camera-close {
+            font-size: 0;
+        }
+
+        .camera-close::before {
+            content: "X";
+            font-size: 1rem;
+        }
+
+        .camera-canvas {
+            display: block;
+            width: 100%;
+            aspect-ratio: 20 / 14;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            background: #0d1014;
+            object-fit: contain;
+        }
+
+        .camera-preview-wrap {
+            display: none;
+        }
+
+        .camera-preview-wrap.ready {
+            display: block;
+        }
+
+        .camera-canvas[hidden] {
+            display: none;
+        }
+
+        .camera-actions {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .camera-actions button {
+            min-height: 44px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .camera-apply {
+            background: rgba(125, 211, 167, 0.18);
+            border-color: rgba(125, 211, 167, 0.35);
+        }
+
+        .camera-apply[disabled] {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        body.inverted-ui .camera-card,
+        body.inverted-ui .camera-close,
+        body.inverted-ui .camera-actions button {
+            border-color: rgba(15, 23, 42, 0.16);
+            background: rgba(255, 255, 255, 0.94);
+            color: #0f172a;
+        }
+
+        body.inverted-ui .camera-header p,
+        body.inverted-ui .camera-status {
+            color: #334155;
+        }
+
+        @media (max-height: 520px) and (orientation: landscape) {
+            .camera-card {
+                width: min(86vw, 720px);
+                max-height: calc(100vh - 18px);
+                padding: 10px;
+            }
+
+            .camera-header p {
+                display: none;
+            }
+
+            .camera-canvas {
+                max-height: 48vh;
+            }
+
+            .camera-actions {
+                margin-top: 8px;
+                gap: 8px;
+            }
+
+            .camera-actions button {
+                min-height: 40px;
+            }
+
+            .camera-status {
+                margin-top: 8px;
+                font-size: 0.8rem;
+            }
+        }
+
+        .hud {
+            position: fixed;
+            top: calc(14px + env(safe-area-inset-top, 0px));
+            left: calc(14px + env(safe-area-inset-left, 0px));
+            z-index: 4;
+            padding: 9px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(12, 16, 21, 0.7);
+            color: var(--muted);
+            font-size: 0.82rem;
+            backdrop-filter: blur(8px);
+            max-width: min(60vw, 340px);
+        }
+
+        @media (max-width: 700px) {
+            .overlay-card {
+                width: min(84vw, 300px);
+                margin-top: calc(58px + env(safe-area-inset-top, 0px));
+                padding: 18px 16px;
+            }
+
+            .hud {
+                top: calc(12px + env(safe-area-inset-top, 0px));
+                left: calc(12px + env(safe-area-inset-left, 0px));
+                max-width: calc(100vw - 124px);
+                font-size: 0.74rem;
+            }
+
+            .menu-toggle {
+                width: 72px;
+                height: 72px;
+                font-size: 1.4rem;
+            }
+
+            .menu-panel {
+                gap: 6px;
+                padding: 10px;
+                min-width: 176px;
+                max-width: min(74vw, 240px);
+                max-height: min(56vh, 360px);
+            }
+
+            .menu-panel button {
+                padding: 8px 10px;
+                font-size: 0.85rem;
+            }
+
+            .step-button {
+                width: 66px;
+                height: 66px;
+                font-size: 2rem;
+            }
+
+            .pattern-button,
+            .camera-button {
+                width: 66px;
+                height: 66px;
+                font-size: 0.92rem;
+            }
+
+            .pattern-details-button {
+                min-width: 84px;
+                height: 50px;
+                padding: 0 14px;
+                font-size: 0.82rem;
+            }
+
+            .pattern-catalog-button {
+                min-width: 80px;
+                height: 48px;
+                padding: 0 14px;
+                font-size: 0.86rem;
+            }
+
+            .pattern-catalog-panel {
+                width: min(92vw, 360px);
+                padding: 14px;
+            }
+
+            .pattern-catalog-item {
+                width: 76px;
+            }
+
+            .pattern-preview-frame {
+                height: 64px;
+            }
+
+            .overlay-card h1 {
+                font-size: 1.45rem;
+            }
+
+            .pattern-card {
+                width: min(92vw, 340px);
+                padding: 16px;
+            }
+
+            .pattern-summary {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (orientation: portrait) and (max-width: 900px) {
+            .mobile-hint {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+    <div class="mobile-hint">Gire o celular para horizontal para ver o grid no formato pensado para smartphone.</div>
+
+    <div class="hud" id="status">Pausado | Geracao 0 | 20 x 14</div>
+
+    <div class="top-menu">
+        <button class="menu-toggle" id="top-menu-toggle" aria-label="Abrir menu superior">☰</button>
+        <div class="menu-panel" id="top-menu-panel">
+            <button id="show-project">Gol Card Game</button>
+            <button id="install-app" hidden>Instalar app</button>
+            <button id="close-overlay">Ocultar conteudo</button>
+        </div>
+    </div>
+
+    <section class="overlay-card" id="main-content" style="display: none;">
+        <h1>Gol Card Game</h1>
+        <p></p>
+    </section>
+
+    <div class="menu">
+        <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu inferior">☰</button>
+        <div class="menu-panel" id="menu-panel">
+            <button id="btn-play">Iniciar</button>
+            <button id="btn-insert">Inserir</button>
+            <div class="menu-inline-panel" id="insert-panel">
+                <div class="insert-grid" id="insert-grid"></div>
+            </div>
+            <button id="btn-random">Preencher aleatorio</button>
+            <button id="btn-clear">Limpar grid</button>
+            <button id="btn-speedup">Mais rapido</button>
+            <button id="btn-speeddown">Mais lento</button>
+            <button id="btn-fullscreen">Tela cheia</button>
+            <button id="btn-rle">Inserir RLE</button>
+            <button id="btn-invert">Inverter cores</button>
+            <button id="btn-border">Borda ligada</button>
+            <button id="btn-size">Tamanho</button>
+            <div class="menu-inline-panel" id="size-panel">
+                <label for="size-slider" id="size-label">Resolucao 20 x 14</label>
+                <input id="size-slider" type="range" min="9" max="22" step="1" value="14" aria-label="Ajustar resolucao do grid">
+            </div>
+            <button id="btn-refresh">Refresh</button>
+        </div>
+    </div>
+
+    <div class="step-control">
+        <div class="pattern-catalog-panel" id="pattern-catalog-panel">
+            <div class="pattern-catalog-header">
+                <strong>Catalogo PAT</strong>
+                <span>Padroes e fases que podem ser reconhecidos pelo analisador.</span>
+            </div>
+            <div class="pattern-catalog-list" id="pattern-catalog-list"></div>
+        </div>
+        <button class="pattern-catalog-button" id="btn-pattern-catalog" aria-label="Abrir catalogo de padroes">PAT</button>
+        <div class="step-row">
+            <button class="pattern-details-button" id="btn-pattern-details" aria-label="Mostrar detalhes dos padroes" hidden>PAT details</button>
+            <button class="pattern-button" id="btn-patterns" aria-label="Ativar analise do grid" title="Analisar grid">
+                <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"></circle>
+                    <line x1="16.2" y1="16.2" x2="21" y2="21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></line>
+                </svg>
+            </button>
+            <button class="camera-button" id="btn-camera" aria-label="Abrir camera para capturar grid" title="Capturar grid fisico">
+                <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+                    <path d="M4 8.5h3.1l1.5-2.2h6.8l1.5 2.2H20a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7.2a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>
+                    <circle cx="12" cy="14" r="3.2" fill="none" stroke="currentColor" stroke-width="2"></circle>
+                </svg>
+            </button>
+            <button class="step-button" id="btn-step-floating" aria-label="Avancar uma geracao">&gt;</button>
+        </div>
+    </div>
+
+    <div class="pattern-modal" id="pattern-modal">
+        <div class="pattern-card" id="pattern-card">
+            <div class="pattern-card-header">
+                <div>
+                    <h2>Padroes identificados</h2>
+                    <p>Analise do grid atual para ajudar a pontuacao da rodada.</p>
+                </div>
+                <button class="pattern-close" id="pattern-close" aria-label="Fechar padroes">×</button>
+            </div>
+            <div class="pattern-controls">
+                <span>Reconhecimento sobreposto</span>
+                <label class="pattern-switch">
+                    <input type="checkbox" id="overlap-toggle">
+                    <span id="overlap-label">Desligado</span>
+                </label>
+            </div>
+            <div class="pattern-summary" id="pattern-summary"></div>
+            <div class="pattern-list" id="pattern-list"></div>
+        </div>
+    </div>
+    <div class="pattern-tip" id="pattern-tip">
+        <strong id="pattern-tip-title"></strong>
+        <span id="pattern-tip-body"></span>
+    </div>
+
+    <div class="camera-modal" id="camera-modal">
+        <div class="camera-card">
+            <div class="camera-header">
+                <div>
+                    <h2>Capturar grid fisico</h2>
+                    <p>Tire ou escolha uma foto, revise o preview e confirme.</p>
+                </div>
+                <button class="camera-close" id="camera-close" aria-label="Fechar camera">Ã—</button>
+            </div>
+            <div class="camera-preview-wrap" id="camera-preview-wrap">
+                <canvas class="camera-canvas" id="camera-canvas" hidden></canvas>
+            </div>
+            <div class="camera-actions">
+                <button id="camera-capture">Camera</button>
+                <button id="camera-file-button">Arquivo</button>
+                <button id="camera-calibrate">Calibrar</button>
+                <button class="camera-apply" id="camera-apply" disabled>OK</button>
+            </div>
+            <p class="camera-status" id="camera-status">Escolha uma foto do grid 20 x 14.</p>
+            <input id="camera-shot-file" type="file" accept="image/*" capture="environment" hidden>
+            <input id="camera-file" type="file" accept="image/*" hidden>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        const GRID_ASPECT_RATIO = 20 / 14;
+        let ROWS = 14;
+        let COLS = 20;
+        let cellSize = 16;
+        let gridOriginX = 0;
+        let gridOriginY = 0;
+
+        let grid = createGrid();
+        let running = false;
+        let speed = 180;
+        let intervalId = null;
+        let inverted = false;
+        let wrapBorders = true;
+        let generation = 0;
+        let deferredInstallPrompt = null;
+
+        const status = document.getElementById('status');
+        const mainContent = document.getElementById('main-content');
+        const installAppButton = document.getElementById('install-app');
+        const fullscreenButton = document.getElementById('btn-fullscreen');
+        const uiRoot = document.body;
+        const floatingStepButton = document.getElementById('btn-step-floating');
+        const patternButton = document.getElementById('btn-patterns');
+        const cameraButton = document.getElementById('btn-camera');
+        const patternDetailsButton = document.getElementById('btn-pattern-details');
+        const patternCatalogButton = document.getElementById('btn-pattern-catalog');
+        const patternCatalogPanel = document.getElementById('pattern-catalog-panel');
+        const patternCatalogList = document.getElementById('pattern-catalog-list');
+        const patternModal = document.getElementById('pattern-modal');
+        const patternCard = document.getElementById('pattern-card');
+        const patternCloseButton = document.getElementById('pattern-close');
+        const patternSummary = document.getElementById('pattern-summary');
+        const patternList = document.getElementById('pattern-list');
+        const overlapToggle = document.getElementById('overlap-toggle');
+        const overlapLabel = document.getElementById('overlap-label');
+        const insertButton = document.getElementById('btn-insert');
+        const insertPanel = document.getElementById('insert-panel');
+        const insertGrid = document.getElementById('insert-grid');
+        const sizeButton = document.getElementById('btn-size');
+        const sizePanel = document.getElementById('size-panel');
+        const sizeSlider = document.getElementById('size-slider');
+        const sizeLabel = document.getElementById('size-label');
+        const patternTip = document.getElementById('pattern-tip');
+        const patternTipTitle = document.getElementById('pattern-tip-title');
+        const patternTipBody = document.getElementById('pattern-tip-body');
+        const cameraModal = document.getElementById('camera-modal');
+        const cameraPreviewWrap = document.getElementById('camera-preview-wrap');
+        const cameraCanvas = document.getElementById('camera-canvas');
+        const cameraCaptureButton = document.getElementById('camera-capture');
+        const cameraCloseButton = document.getElementById('camera-close');
+        const cameraFileButton = document.getElementById('camera-file-button');
+        const cameraCalibrateButton = document.getElementById('camera-calibrate');
+        const cameraShotInput = document.getElementById('camera-shot-file');
+        const cameraFileInput = document.getElementById('camera-file');
+        const cameraApplyButton = document.getElementById('camera-apply');
+        const cameraStatus = document.getElementById('camera-status');
+        let longPressTimer = null;
+        let longPressActive = false;
+        let patternOverlay = null;
+        let analysisMode = false;
+        let allowOverlappingPatterns = false;
+        let pendingCameraGrid = null;
+        let cameraCalibrationMode = false;
+        let cameraCalibration = loadCameraCalibration();
+        const patternColorPalette = [
+            { fill: 'rgba(125, 211, 167, 0.18)', stroke: 'rgba(125, 211, 167, 0.94)', solid: '#7dd3a7' },
+            { fill: 'rgba(96, 165, 250, 0.16)', stroke: 'rgba(96, 165, 250, 0.94)', solid: '#60a5fa' },
+            { fill: 'rgba(250, 204, 21, 0.16)', stroke: 'rgba(250, 204, 21, 0.94)', solid: '#facc15' },
+            { fill: 'rgba(192, 132, 252, 0.16)', stroke: 'rgba(192, 132, 252, 0.94)', solid: '#c084fc' },
+            { fill: 'rgba(244, 114, 182, 0.16)', stroke: 'rgba(244, 114, 182, 0.94)', solid: '#f472b6' },
+            { fill: 'rgba(251, 146, 60, 0.16)', stroke: 'rgba(251, 146, 60, 0.94)', solid: '#fb923c' },
+            { fill: 'rgba(45, 212, 191, 0.16)', stroke: 'rgba(45, 212, 191, 0.94)', solid: '#2dd4bf' },
+            { fill: 'rgba(248, 113, 113, 0.16)', stroke: 'rgba(248, 113, 113, 0.94)', solid: '#f87171' },
+            { fill: 'rgba(129, 140, 248, 0.16)', stroke: 'rgba(129, 140, 248, 0.94)', solid: '#818cf8' },
+            { fill: 'rgba(52, 211, 153, 0.16)', stroke: 'rgba(52, 211, 153, 0.94)', solid: '#34d399' }
+        ];
+        const patternColors = {};
+
+        function createGrid() {
+            return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            cellSize = Math.min(canvas.width / COLS, canvas.height / ROWS);
+            gridOriginX = (canvas.width - cellSize * COLS) / 2;
+            gridOriginY = (canvas.height - cellSize * ROWS) / 2;
+            drawGrid();
+        }
+
+        function updateSizeLabel() {
+            sizeLabel.textContent = 'Resolucao ' + COLS + ' x ' + ROWS;
+            sizeSlider.value = String(ROWS);
+        }
+
+        function setGridResolution(nextRows) {
+            const rows = Math.max(9, Math.min(22, nextRows));
+            const cols = Math.max(12, Math.round(rows * GRID_ASPECT_RATIO));
+
+            if (rows === ROWS && cols === COLS) {
+                updateSizeLabel();
+                return;
+            }
+
+            ROWS = rows;
+            COLS = cols;
+            grid = createGrid();
+            generation = 0;
+
+            refreshPatternOverlayIfOpen();
+            updateSizeLabel();
+            resizeCanvas();
+            updateStatus();
+        }
+
+        function drawGrid() {
+            const deadColor = inverted ? '#eef2f7' : '#171a1e';
+            const aliveColor = inverted ? '#0d1014' : '#f4f7fb';
+            const lineColor = inverted ? '#b8c2cf' : '#080a0d';
+            const gridWidth = cellSize * COLS;
+            const gridHeight = cellSize * ROWS;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#0a0d11';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = deadColor;
+            ctx.fillRect(gridOriginX, gridOriginY, gridWidth, gridHeight);
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    if (!grid[row][col]) continue;
+                    ctx.fillStyle = aliveColor;
+                    ctx.fillRect(
+                        gridOriginX + col * cellSize + 1,
+                        gridOriginY + row * cellSize + 1,
+                        Math.max(cellSize - 2, 1),
+                        Math.max(cellSize - 2, 1)
+                    );
+                }
+            }
+
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = 1;
+
+            for (let row = 0; row <= ROWS; row++) {
+                const y = gridOriginY + row * cellSize;
+                ctx.beginPath();
+                ctx.moveTo(gridOriginX, y);
+                ctx.lineTo(gridOriginX + gridWidth, y);
+                ctx.stroke();
+            }
+
+            for (let col = 0; col <= COLS; col++) {
+                const x = gridOriginX + col * cellSize;
+                ctx.beginPath();
+                ctx.moveTo(x, gridOriginY);
+                ctx.lineTo(x, gridOriginY + gridHeight);
+                ctx.stroke();
+            }
+
+            drawPatternOverlay();
+        }
+
+        function drawPatternOverlay() {
+            if (!analysisMode || !patternOverlay || !patternOverlay.matches.length) return;
+
+            for (const match of patternOverlay.matches) {
+                const colors = patternColors[match.family] || patternColors.LWSS;
+                const fillColor = colors.fill;
+                const strokeColor = colors.stroke;
+
+                ctx.fillStyle = fillColor;
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = 2;
+
+                for (const [cellRow, cellCol] of match.footprintCells) {
+                    const x = gridOriginX + cellCol * cellSize;
+                    const y = gridOriginY + cellRow * cellSize;
+                    ctx.fillRect(x, y, cellSize, cellSize);
+                    ctx.strokeRect(
+                        x + 1,
+                        y + 1,
+                        Math.max(cellSize - 2, 1),
+                        Math.max(cellSize - 2, 1)
+                    );
+                }
+            }
+        }
+
+        function countNeighbors(row, col) {
+            let neighbors = 0;
+
+            for (let dRow = -1; dRow <= 1; dRow++) {
+                for (let dCol = -1; dCol <= 1; dCol++) {
+                    if (dRow === 0 && dCol === 0) continue;
+
+                    let nextRow = row + dRow;
+                    let nextCol = col + dCol;
+
+                    if (wrapBorders) {
+                        nextRow = (nextRow + ROWS) % ROWS;
+                        nextCol = (nextCol + COLS) % COLS;
+                        neighbors += grid[nextRow][nextCol];
+                    } else if (nextRow >= 0 && nextRow < ROWS && nextCol >= 0 && nextCol < COLS) {
+                        neighbors += grid[nextRow][nextCol];
+                    }
+                }
+            }
+
+            return neighbors;
+        }
+
+        function nextGen() {
+            const next = createGrid();
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const neighbors = countNeighbors(row, col);
+                    if (grid[row][col]) {
+                        next[row][col] = neighbors === 2 || neighbors === 3 ? 1 : 0;
+                    } else {
+                        next[row][col] = neighbors === 3 ? 1 : 0;
+                    }
+                }
+            }
+
+            grid = next;
+            generation += 1;
+            refreshPatternOverlayIfOpen();
+            drawGrid();
+            updateStatus();
+        }
+
+        function updateStatus() {
+            const mode = running ? 'Rodando' : 'Pausado';
+            const borderLabel = wrapBorders ? 'Borda ligada' : 'Borda desligada';
+            status.textContent = mode + ' | Geracao ' + generation + ' | ' + COLS + ' x ' + ROWS + ' | ' + borderLabel;
+        }
+
+        function updatePatternButton() {
+            patternButton.classList.toggle('active', analysisMode);
+            patternButton.setAttribute('aria-label', analysisMode ? 'Desativar analise do grid' : 'Ativar analise do grid');
+            patternButton.setAttribute('title', analysisMode ? 'Desligar analise' : 'Analisar grid');
+            patternDetailsButton.hidden = !analysisMode;
+        }
+
+        function updatePatternDetailsButton() {
+            if (!analysisMode) {
+                patternDetailsButton.hidden = true;
+                return;
+            }
+
+            patternDetailsButton.hidden = false;
+            patternDetailsButton.textContent = patternCard.classList.contains('hidden')
+                ? 'PAT details'
+                : 'Hide details';
+        }
+
+        function updateOverlapToggle() {
+            overlapToggle.checked = allowOverlappingPatterns;
+            overlapLabel.textContent = allowOverlappingPatterns ? 'Ligado' : 'Desligado';
+        }
+
+        function normalizeGridPosition(row, col) {
+            return [
+                (row + ROWS) % ROWS,
+                (col + COLS) % COLS
+            ];
+        }
+
+        function setMenusVisible(visible) {
+            uiRoot.classList.toggle('ui-hidden', !visible);
+            if (!visible) {
+                topMenuPanel.classList.remove('open');
+                menuPanel.classList.remove('open');
+                patternCatalogPanel.classList.remove('open');
+                hidePatternTextPanel();
+            }
+        }
+
+        function toggleMenusVisible() {
+            setMenusVisible(uiRoot.classList.contains('ui-hidden'));
+        }
+
+        function start() {
+            if (running) return;
+            running = true;
+            intervalId = window.setInterval(nextGen, speed);
+            updatePlayPauseBtn();
+            updateStatus();
+        }
+
+        function stop() {
+            running = false;
+            if (intervalId !== null) {
+                window.clearInterval(intervalId);
+                intervalId = null;
+            }
+            updatePlayPauseBtn();
+            updateStatus();
+        }
+
+        function toggleRun() {
+            if (running) {
+                stop();
+            } else {
+                start();
+            }
+        }
+
+        function stepOnce() {
+            if (running) stop();
+            nextGen();
+        }
+
+        function changeSpeed(delta) {
+            speed = Math.max(60, speed + delta);
+            if (running) {
+                stop();
+                start();
+            }
+        }
+
+        function clearGrid() {
+            grid = createGrid();
+            generation = 0;
+            refreshPatternOverlayIfOpen();
+            drawGrid();
+            updateStatus();
+        }
+
+        function randomizeGrid() {
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    grid[row][col] = Math.random() > 0.72 ? 1 : 0;
+                }
+            }
+            generation = 0;
+            refreshPatternOverlayIfOpen();
+            drawGrid();
+            updateStatus();
+        }
+
+        function injectPattern(pattern) {
+            const height = pattern.length;
+            const width = pattern[0].length;
+            const margin = 2;
+            const startCol = margin + Math.floor(Math.random() * Math.max(1, COLS - width - margin * 2));
+            const startRow = margin + Math.floor(Math.random() * Math.max(1, ROWS - height - margin * 2));
+
+            for (let row = 0; row < height; row++) {
+                for (let col = 0; col < width; col++) {
+                    if (pattern[row][col]) {
+                        const targetRow = startRow + row;
+                        const targetCol = startCol + col;
+                        if (targetRow >= 0 && targetRow < ROWS && targetCol >= 0 && targetCol < COLS) {
+                            grid[targetRow][targetCol] = 1;
+                        }
+                    }
+                }
+            }
+
+            refreshPatternOverlayIfOpen();
+            drawGrid();
+            updateStatus();
+        }
+
+        function parseRLE(rle) {
+            const clean = rle
+                .replace(/^#.*$/gm, '')
+                .replace(/^x\s*=.*$/gm, '')
+                .replace(/\s+/g, '')
+                .replace(/!+$/, '');
+
+            const sparse = [];
+            let row = 0;
+            let col = 0;
+            let index = 0;
+
+            while (index < clean.length) {
+                let number = '';
+                while (index < clean.length && /\d/.test(clean[index])) {
+                    number += clean[index];
+                    index += 1;
+                }
+
+                const count = number ? Number(number) : 1;
+                const token = clean[index];
+                index += 1;
+
+                if (token === 'b') {
+                    col += count;
+                } else if (token === 'o') {
+                    if (!sparse[row]) sparse[row] = [];
+                    for (let i = 0; i < count; i++) {
+                        sparse[row][col] = 1;
+                        col += 1;
+                    }
+                } else if (token === '$') {
+                    row += count;
+                    col = 0;
+                }
+            }
+
+            const height = sparse.length;
+            const width = sparse.reduce((max, current) => Math.max(max, current ? current.length : 0), 0);
+            if (!height || !width) return null;
+
+            const pattern = Array.from({ length: height }, () => Array(width).fill(0));
+            for (let r = 0; r < height; r++) {
+                for (let c = 0; c < width; c++) {
+                    pattern[r][c] = sparse[r] && sparse[r][c] === 1 ? 1 : 0;
+                }
+            }
+
+            return pattern;
+        }
+
+        function updatePlayPauseBtn() {
+            document.getElementById('btn-play').textContent = running ? 'Pausar' : 'Iniciar';
+        }
+
+        function updateBorderBtn() {
+            document.getElementById('btn-border').textContent = wrapBorders ? 'Borda ligada' : 'Borda desligada';
+        }
+
+        function updateFullscreenBtn() {
+            const active = Boolean(document.fullscreenElement);
+            fullscreenButton.textContent = active ? 'Sair da tela cheia' : 'Tela cheia';
+        }
+
+        function getLiveCells(pattern) {
+            const cells = [];
+            for (let row = 0; row < pattern.length; row++) {
+                for (let col = 0; col < pattern[row].length; col++) {
+                    if (pattern[row][col]) {
+                        cells.push([row, col]);
+                    }
+                }
+            }
+            return cells;
+        }
+
+        function trimPattern(pattern) {
+            let minRow = Infinity;
+            let minCol = Infinity;
+            let maxRow = -1;
+            let maxCol = -1;
+
+            for (let row = 0; row < pattern.length; row++) {
+                for (let col = 0; col < pattern[row].length; col++) {
+                    if (!pattern[row][col]) continue;
+                    minRow = Math.min(minRow, row);
+                    minCol = Math.min(minCol, col);
+                    maxRow = Math.max(maxRow, row);
+                    maxCol = Math.max(maxCol, col);
+                }
+            }
+
+            if (maxRow === -1) return [[0]];
+
+            const trimmed = [];
+            for (let row = minRow; row <= maxRow; row++) {
+                const line = [];
+                for (let col = minCol; col <= maxCol; col++) {
+                    line.push(pattern[row][col] ? 1 : 0);
+                }
+                trimmed.push(line);
+            }
+            return trimmed;
+        }
+
+        function rotatePattern(pattern) {
+            const rows = pattern.length;
+            const cols = pattern[0].length;
+            const rotated = Array.from({ length: cols }, () => Array(rows).fill(0));
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    rotated[col][rows - row - 1] = pattern[row][col];
+                }
+            }
+            return rotated;
+        }
+
+        function mirrorPattern(pattern) {
+            return pattern.map((row) => row.slice().reverse());
+        }
+
+        function patternKey(pattern) {
+            return pattern.map((row) => row.join('')).join('/');
+        }
+
+        function simulatePattern(pattern) {
+            const margin = 6;
+            let simRows = pattern.length + margin * 2;
+            let simCols = pattern[0].length + margin * 2;
+            let state = Array.from({ length: simRows }, () => Array(simCols).fill(0));
+
+            for (let row = 0; row < pattern.length; row++) {
+                for (let col = 0; col < pattern[row].length; col++) {
+                    state[row + margin][col + margin] = pattern[row][col] ? 1 : 0;
+                }
+            }
+
+            const next = Array.from({ length: simRows }, () => Array(simCols).fill(0));
+            for (let row = 0; row < simRows; row++) {
+                for (let col = 0; col < simCols; col++) {
+                    let neighbors = 0;
+                    for (let dRow = -1; dRow <= 1; dRow++) {
+                        for (let dCol = -1; dCol <= 1; dCol++) {
+                            if (dRow === 0 && dCol === 0) continue;
+                            const nr = row + dRow;
+                            const nc = col + dCol;
+                            if (nr >= 0 && nr < simRows && nc >= 0 && nc < simCols) {
+                                neighbors += state[nr][nc];
+                            }
+                        }
+                    }
+
+                    if (state[row][col]) {
+                        next[row][col] = neighbors === 2 || neighbors === 3 ? 1 : 0;
+                    } else {
+                        next[row][col] = neighbors === 3 ? 1 : 0;
+                    }
+                }
+            }
+            return next;
+        }
+
+        function clonePattern(pattern) {
+            return pattern.map((row) => row.slice());
+        }
+
+        function getPatternDefinitions() {
+            return Object.entries(patterns).map(([key, def], index) => ({
+                key,
+                name: def.name,
+                category: def.category,
+                phaseCount: def.phaseCount || 4,
+                mirrors: Boolean(def.mirrors),
+                pattern: def.pattern,
+                color: patternColorPalette[index % patternColorPalette.length]
+            }));
+        }
+
+        function syncPatternColors() {
+            getPatternDefinitions().forEach((def) => {
+                patternColors[def.name] = def.color;
+            });
+        }
+
+        function getPatternTransforms(def) {
+            const seeds = [clonePattern(def.pattern)];
+            if (def.mirrors) {
+                seeds.push(mirrorPattern(def.pattern));
+            }
+
+            const transforms = [];
+            const seen = new Set();
+            for (const seed of seeds) {
+                let current = trimPattern(seed);
+                for (let rotation = 0; rotation < 4; rotation++) {
+                    const trimmed = trimPattern(current);
+                    const key = patternKey(trimmed);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        transforms.push(trimmed);
+                    }
+                    current = rotatePattern(current);
+                }
+            }
+            return transforms;
+        }
+
+        function buildFamilyVariants(def, transformPatterns) {
+            const variants = [];
+            const seen = new Set();
+            const phaseCount = def.phaseCount || 4;
+
+            for (const transformed of transformPatterns) {
+                let current = trimPattern(transformed);
+                for (let phase = 0; phase < phaseCount; phase++) {
+                    const trimmed = trimPattern(current);
+                    const key = def.name + '|' + phase + '|' + patternKey(trimmed);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        variants.push({
+                            family: def.name,
+                            phase,
+                            pattern: trimmed,
+                            liveCells: getLiveCells(trimmed),
+                            height: trimmed.length,
+                            width: trimmed[0].length
+                        });
+                    }
+                    current = simulatePattern(current);
+                }
+            }
+
+            return variants;
+        }
+
+        function createPatternFamilies() {
+            const families = {};
+            for (const def of getPatternDefinitions()) {
+                families[def.key] = buildFamilyVariants(def, getPatternTransforms(def));
+            }
+            return families;
+        }
+
+        function buildPatternPreviewSvg(pattern) {
+            const rows = pattern.length;
+            const cols = pattern[0].length;
+            const cell = 16;
+            const width = cols * cell;
+            const height = rows * cell;
+
+            let svg = '<div class="pattern-preview-frame"><svg class="pattern-preview-svg" viewBox="0 0 ' + width + ' ' + height + '" xmlns="http://www.w3.org/2000/svg">';
+            svg += '<rect width="' + width + '" height="' + height + '" rx="6" fill="#0d1014"/>';
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    svg += '<rect x="' + (col * cell) + '" y="' + (row * cell) + '" width="' + cell + '" height="' + cell + '" fill="none" stroke="#25303b" stroke-width="1"/>';
+                    if (pattern[row][col]) {
+                        svg += '<rect x="' + (col * cell + 2) + '" y="' + (row * cell + 2) + '" width="' + (cell - 4) + '" height="' + (cell - 4) + '" rx="2" fill="#f4f7fb"/>';
+                    }
+                }
+            }
+
+            svg += '</svg></div>';
+            return svg;
+        }
+
+        function buildCatalogVariants(def) {
+            const seeds = [
+                { label: 'Padrao', pattern: def.pattern }
+            ];
+
+            if (def.mirrors) {
+                const mirrored = mirrorPattern(def.pattern);
+                if (patternKey(mirrored) !== patternKey(def.pattern)) {
+                    seeds.push({ label: 'Mirror', pattern: mirrored });
+                }
+            }
+
+            const variants = [];
+            const seen = new Set();
+            for (const seed of seeds) {
+                let current = trimPattern(seed.pattern);
+                for (let phase = 0; phase < def.phaseCount; phase++) {
+                    const trimmed = trimPattern(current);
+                    const key = seed.label + '|' + phase + '|' + patternKey(trimmed);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        variants.push({
+                            label: seed.label + ' fase ' + (phase + 1),
+                            pattern: trimmed
+                        });
+                    }
+                    current = simulatePattern(current);
+                }
+            }
+            return variants;
+        }
+
+        function renderPatternCatalog() {
+            patternCatalogList.innerHTML = '';
+
+            for (const def of getPatternDefinitions()) {
+                const group = document.createElement('div');
+                group.className = 'pattern-catalog-group';
+
+                const title = document.createElement('h3');
+                title.textContent = def.name;
+                group.appendChild(title);
+
+                const variantsWrap = document.createElement('div');
+                variantsWrap.className = 'pattern-catalog-variants';
+
+                buildCatalogVariants(def).forEach((variant) => {
+                    const item = document.createElement('div');
+                    item.className = 'pattern-catalog-item';
+                    item.innerHTML = buildPatternPreviewSvg(variant.pattern);
+
+                    const label = document.createElement('span');
+                    label.textContent = variant.label;
+                    item.appendChild(label);
+                    variantsWrap.appendChild(item);
+                });
+
+                group.appendChild(variantsWrap);
+                patternCatalogList.appendChild(group);
+            }
+        }
+
+        function renderInsertOptions() {
+            insertGrid.innerHTML = '';
+
+            for (const def of getPatternDefinitions()) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'insert-option';
+                button.setAttribute('aria-label', 'Inserir ' + def.name);
+                button.innerHTML = buildPatternPreviewSvg(def.pattern) + '<span>' + def.name + '</span>';
+                button.addEventListener('click', () => {
+                    injectPattern(def.pattern);
+                    insertPanel.classList.remove('open');
+                });
+                insertGrid.appendChild(button);
+            }
+        }
+
+        function matchesVariantAt(variant, startRow, startCol) {
+            for (let row = 0; row < variant.height; row++) {
+                for (let col = 0; col < variant.width; col++) {
+                    const expected = variant.pattern[row][col];
+                    let targetRow = startRow + row;
+                    let targetCol = startCol + col;
+
+                    if (wrapBorders) {
+                        [targetRow, targetCol] = normalizeGridPosition(targetRow, targetCol);
+                    } else if (targetRow < 0 || targetRow >= ROWS || targetCol < 0 || targetCol >= COLS) {
+                        return false;
+                    }
+
+                    if (grid[targetRow][targetCol] !== expected) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function buildMatchFootprint(variant, startRow, startCol) {
+            const footprintCells = [];
+            const liveCells = [];
+
+            for (let row = 0; row < variant.height; row++) {
+                for (let col = 0; col < variant.width; col++) {
+                    let targetRow = startRow + row;
+                    let targetCol = startCol + col;
+
+                    if (wrapBorders) {
+                        [targetRow, targetCol] = normalizeGridPosition(targetRow, targetCol);
+                    }
+
+                    footprintCells.push([targetRow, targetCol]);
+                    if (variant.pattern[row][col]) {
+                        liveCells.push([targetRow, targetCol]);
+                    }
+                }
+            }
+
+            return { footprintCells, liveCells };
+        }
+
+        function analyzeCurrentGrid() {
+            const matches = [];
+            const totals = Object.fromEntries(getPatternDefinitions().map((def) => [def.name, 0]));
+            const seen = new Set();
+
+            for (const familyName of Object.keys(patternFamilies)) {
+                for (const variant of patternFamilies[familyName]) {
+                    const maxRow = wrapBorders ? ROWS - 1 : ROWS - variant.height;
+                    const maxCol = wrapBorders ? COLS - 1 : COLS - variant.width;
+
+                    for (let row = 0; row <= maxRow; row++) {
+                        for (let col = 0; col <= maxCol; col++) {
+                            if (!matchesVariantAt(variant, row, col)) continue;
+
+                            const footprint = buildMatchFootprint(variant, row, col);
+                            const dedupeKey =
+                                variant.family + '|' +
+                                variant.phase + '|' +
+                                footprint.liveCells
+                                    .map(([r, c]) => r + ':' + c)
+                                    .sort()
+                                    .join(',');
+
+                            if (seen.has(dedupeKey)) continue;
+                            seen.add(dedupeKey);
+
+                            matches.push({
+                                family: variant.family,
+                                phase: variant.phase,
+                                row,
+                                col,
+                                width: variant.width,
+                                height: variant.height,
+                                footprintCells: footprint.footprintCells,
+                                liveCells: footprint.liveCells
+                            });
+                            totals[variant.family] += 1;
+                        }
+                    }
+                }
+            }
+
+            const filteredMatches = allowOverlappingPatterns
+                ? matches
+                : filterOverlappingMatches(matches);
+
+            const filteredTotals = Object.fromEntries(getPatternDefinitions().map((def) => [def.name, 0]));
+            filteredMatches.forEach((match) => {
+                filteredTotals[match.family] += 1;
+            });
+
+            return { matches: filteredMatches, totals: filteredTotals };
+        }
+
+        function filterOverlappingMatches(matches) {
+            const claimed = new Set();
+            const sorted = matches.slice().sort((a, b) => {
+                const liveDiff = b.liveCells.length - a.liveCells.length;
+                if (liveDiff !== 0) return liveDiff;
+
+                const areaDiff = (b.width * b.height) - (a.width * a.height);
+                if (areaDiff !== 0) return areaDiff;
+
+                return a.family.localeCompare(b.family);
+            });
+
+            const kept = [];
+            for (const match of sorted) {
+                const overlaps = match.liveCells.some(([row, col]) => claimed.has(row + ':' + col));
+                if (overlaps) continue;
+
+                kept.push(match);
+                match.liveCells.forEach(([row, col]) => {
+                    claimed.add(row + ':' + col);
+                });
+            }
+
+            return kept;
+        }
+
+        function renderPatternAnalysis(analysis) {
+            patternSummary.innerHTML = '';
+            patternList.innerHTML = '';
+
+            const summaryItems = getPatternDefinitions().map((def) => ({
+                label: def.name + ' encontrados',
+                value: analysis.totals[def.name] || 0
+            }));
+
+            for (const item of summaryItems) {
+                const card = document.createElement('div');
+                card.className = 'pattern-summary-item';
+                const strong = document.createElement('strong');
+                strong.textContent = String(item.value);
+                const span = document.createElement('span');
+                span.textContent = item.label;
+                card.appendChild(strong);
+                card.appendChild(span);
+                patternSummary.appendChild(card);
+            }
+
+            if (!analysis.matches.length) {
+                const empty = document.createElement('div');
+                empty.className = 'pattern-empty';
+                empty.textContent = 'Nenhum dos padroes configurados foi encontrado neste estado do grid.';
+                patternList.appendChild(empty);
+                return;
+            }
+
+            analysis.matches.forEach((match, index) => {
+                const item = document.createElement('div');
+                item.className = 'pattern-entry';
+
+                const header = document.createElement('div');
+                header.className = 'pattern-entry-header';
+
+                const dot = document.createElement('span');
+                dot.className = 'pattern-color-dot';
+                dot.style.background = patternColors[match.family]?.solid || '#ffffff';
+
+                const title = document.createElement('strong');
+                title.textContent = match.family + ' #' + (index + 1);
+
+                header.appendChild(dot);
+                header.appendChild(title);
+
+                const details = document.createElement('span');
+                details.textContent =
+                    'Fase ' + (match.phase + 1) +
+                    ' | linha ' + (match.row + 1) +
+                    ' | coluna ' + (match.col + 1) +
+                    ' | area ' + match.width + 'x' + match.height;
+                item.appendChild(header);
+                item.appendChild(details);
+                patternList.appendChild(item);
+            });
+        }
+
+        function showPatternTip(match) {
+            patternTipTitle.style.color = patternColors[match.family]?.solid || '#ffffff';
+            patternTipTitle.textContent = match.family + ' | fase ' + (match.phase + 1);
+            patternTipBody.textContent =
+                'Linha ' + (match.row + 1) +
+                ' | coluna ' + (match.col + 1) +
+                ' | area ' + match.width + 'x' + match.height;
+            patternTip.classList.add('open');
+        }
+
+        function hidePatternTip() {
+            patternTip.classList.remove('open');
+        }
+
+        function togglePatternCatalog() {
+            patternCatalogPanel.classList.toggle('open');
+        }
+
+        function showPatternTextPanel() {
+            patternModal.classList.add('open');
+            patternCard.classList.remove('hidden');
+            updatePatternDetailsButton();
+        }
+
+        function hidePatternTextPanel() {
+            patternCard.classList.add('hidden');
+            hidePatternTip();
+            updatePatternDetailsButton();
+        }
+
+        function setAnalysisMode(enabled) {
+            analysisMode = enabled;
+            uiRoot.classList.toggle('analysis-mode', enabled);
+            updatePatternButton();
+
+            if (!enabled) {
+                patternModal.classList.remove('open');
+                patternCard.classList.add('hidden');
+                patternOverlay = null;
+                hidePatternTip();
+                updatePatternDetailsButton();
+                drawGrid();
+                return;
+            }
+
+            patternOverlay = analyzeCurrentGrid();
+            renderPatternAnalysis(patternOverlay);
+            showPatternTextPanel();
+            hidePatternTip();
+            updatePatternDetailsButton();
+            drawGrid();
+        }
+
+        function refreshPatternOverlayIfOpen() {
+            if (!analysisMode) return;
+            patternOverlay = analyzeCurrentGrid();
+            renderPatternAnalysis(patternOverlay);
+            hidePatternTip();
+        }
+
+        function findPatternAtCell(row, col) {
+            if (!analysisMode || !patternOverlay) return null;
+
+            return patternOverlay.matches.find((match) =>
+                match.footprintCells.some(([cellRow, cellCol]) => cellRow === row && cellCol === col)
+            ) || null;
+        }
+
+        async function toggleFullscreen() {
+            try {
+                if (document.fullscreenElement) {
+                    await document.exitFullscreen();
+                } else {
+                    await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+                }
+            } catch (error) {
+                window.alert('A tela cheia nao foi liberada neste navegador.');
+            }
+        }
+
+        async function installApp() {
+            if (!deferredInstallPrompt) return;
+
+            deferredInstallPrompt.prompt();
+            const choice = await deferredInstallPrompt.userChoice;
+            if (choice.outcome === 'accepted') {
+                deferredInstallPrompt = null;
+                installAppButton.hidden = true;
+                topMenuPanel.classList.remove('open');
+            }
+        }
+
+        async function openCameraPanel() {
+            cameraModal.classList.add('open');
+            cameraButton.classList.add('active');
+            pendingCameraGrid = null;
+            cameraCalibrationMode = false;
+            cameraApplyButton.disabled = true;
+            cameraCanvas.hidden = true;
+            cameraPreviewWrap.classList.remove('ready');
+            cameraStatus.textContent = 'Escolha Camera para tirar uma foto ou Arquivo para usar uma imagem.' + (cameraCalibration ? ' Calibracao ativa.' : '');
+        }
+
+        function closeCameraPanel() {
+            cameraModal.classList.remove('open');
+            cameraButton.classList.remove('active');
+            pendingCameraGrid = null;
+            cameraCalibrationMode = false;
+            cameraApplyButton.disabled = true;
+        }
+
+        function captureCameraFrame() {
+            cameraShotInput.click();
+        }
+
+        function loadCameraFile(file) {
+            if (!file) return;
+
+            const image = new Image();
+            image.onload = () => {
+                URL.revokeObjectURL(image.src);
+                const capture = document.createElement('canvas');
+                capture.width = image.naturalWidth;
+                capture.height = image.naturalHeight;
+                capture.getContext('2d').drawImage(image, 0, 0);
+                analyzeGridImage(capture);
+            };
+            image.src = URL.createObjectURL(file);
+        }
+
+        function detectBoardBounds(imageData, width, height) {
+            const xs = [];
+            const ys = [];
+            const data = imageData.data;
+
+            for (let y = 0; y < height; y += 4) {
+                for (let x = 0; x < width; x += 4) {
+                    const index = (y * width + x) * 4;
+                    const r = data[index];
+                    const g = data[index + 1];
+                    const b = data[index + 2];
+                    const max = Math.max(r, g, b);
+                    const min = Math.min(r, g, b);
+                    const lightness = (max + min) / 2;
+                    if (lightness > 70 && max - min < 120) {
+                        xs.push(x);
+                        ys.push(y);
+                    }
+                }
+            }
+
+            if (xs.length < 200) {
+                return { left: 0, top: 0, right: width, bottom: height };
+            }
+
+            xs.sort((a, b) => a - b);
+            ys.sort((a, b) => a - b);
+            const q = (values, ratio) => values[Math.min(values.length - 1, Math.max(0, Math.floor(values.length * ratio)))];
+            const left = q(xs, 0.03);
+            const right = q(xs, 0.995);
+            const top = q(ys, 0.03);
+            const bottom = q(ys, 0.995);
+
+            return { left, top, right, bottom };
+        }
+
+
+        function loadCameraCalibration() {
+            try {
+                const raw = window.localStorage.getItem('gol-camera-calibration');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return null;
+                return parsed;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function saveCameraCalibration(calibration) {
+            cameraCalibration = calibration;
+            try {
+                if (calibration) {
+                    window.localStorage.setItem('gol-camera-calibration', JSON.stringify(calibration));
+                } else {
+                    window.localStorage.removeItem('gol-camera-calibration');
+                }
+            } catch (error) {
+            }
+        }
+
+        function buildCameraTuning() {
+            const calibration = cameraCalibration || {};
+            const sampleInset = typeof calibration.sampleInset === 'number' ? calibration.sampleInset : 0.34;
+            return {
+                boardInsetLeft: typeof calibration.boardInsetLeft === 'number' ? calibration.boardInsetLeft : 0,
+                boardInsetTop: typeof calibration.boardInsetTop === 'number' ? calibration.boardInsetTop : 0,
+                boardInsetRight: typeof calibration.boardInsetRight === 'number' ? calibration.boardInsetRight : 0,
+                boardInsetBottom: typeof calibration.boardInsetBottom === 'number' ? calibration.boardInsetBottom : 0,
+                sampleInset,
+                sampleEnd: 1 - sampleInset,
+                liveMedianMaxA: typeof calibration.liveMedianMaxA === 'number' ? calibration.liveMedianMaxA : 60,
+                liveMedianMaxB: typeof calibration.liveMedianMaxB === 'number' ? calibration.liveMedianMaxB : 54,
+                liveMedianMaxC: typeof calibration.liveMedianMaxC === 'number' ? calibration.liveMedianMaxC : 52,
+                liveDark35Min: typeof calibration.liveDark35Min === 'number' ? calibration.liveDark35Min : 0.45,
+                liveDark50MinA: typeof calibration.liveDark50MinA === 'number' ? calibration.liveDark50MinA : 0.62,
+                liveDark50MinB: typeof calibration.liveDark50MinB === 'number' ? calibration.liveDark50MinB : 0.72,
+                liveDark85Min: typeof calibration.liveDark85Min === 'number' ? calibration.liveDark85Min : 0.9,
+                liveP10Max: typeof calibration.liveP10Max === 'number' ? calibration.liveP10Max : 28
+            };
+        }
+
+        function expectedCalibrationCell(row, col) {
+            return (row === 0 && col === 0) ||
+                (row === 0 && col === COLS - 1) ||
+                (row === ROWS - 1 && col === 0) ||
+                (row === ROWS - 1 && col === COLS - 1);
+        }
+
+        function createCalibrationGrid() {
+            const nextGrid = createGrid();
+            nextGrid[0][0] = 1;
+            nextGrid[0][COLS - 1] = 1;
+            nextGrid[ROWS - 1][0] = 1;
+            nextGrid[ROWS - 1][COLS - 1] = 1;
+            return nextGrid;
+        }
+
+        function startCameraCalibration() {
+            cameraCalibrationMode = true;
+            pendingCameraGrid = null;
+            cameraApplyButton.disabled = true;
+            cameraStatus.textContent = 'Modo calibracao: mostre o grid vazio com 4 pecas nos cantos e tire ou escolha a foto.';
+            cameraShotInput.click();
+        }
+
+        function finishCameraCalibration(scores, bounds, sourceWidth, sourceHeight) {
+            const cornerScores = [];
+            const emptyScores = [];
+            scores.forEach((score) => {
+                if (expectedCalibrationCell(score.row, score.col)) {
+                    cornerScores.push(score);
+                } else {
+                    emptyScores.push(score);
+                }
+            });
+            if (cornerScores.length < 4 || emptyScores.length < 20) {
+                throw new Error('Nao foi possivel medir a calibracao.');
+            }
+
+            const avg = (items, key) => items.reduce((sum, item) => sum + item[key], 0) / items.length;
+            const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+            const liveMedian = avg(cornerScores, 'median');
+            const emptyMedian = avg(emptyScores, 'median');
+            const liveDark35 = avg(cornerScores, 'dark35');
+            const liveDark50 = avg(cornerScores, 'dark50');
+            const liveDark85 = avg(cornerScores, 'dark85');
+            const liveP10 = avg(cornerScores, 'p10');
+
+            const calibration = {
+                calibratedAt: new Date().toISOString(),
+                boardInsetLeft: clamp((bounds.left / Math.max(1, sourceWidth)) * 0.015, 0, 0.035),
+                boardInsetTop: clamp((bounds.top / Math.max(1, sourceHeight)) * 0.015, 0, 0.035),
+                boardInsetRight: 0,
+                boardInsetBottom: 0,
+                sampleInset: clamp(0.34, 0.26, 0.4),
+                liveMedianMaxA: clamp((liveMedian + emptyMedian) / 2, 38, 95),
+                liveMedianMaxB: clamp(liveMedian + 4, 34, 90),
+                liveMedianMaxC: clamp(liveMedian + 2, 30, 86),
+                liveDark35Min: clamp(liveDark35 * 0.78, 0.18, 0.7),
+                liveDark50MinA: clamp(liveDark50 * 0.82, 0.24, 0.82),
+                liveDark50MinB: clamp(liveDark50 * 0.92, 0.3, 0.92),
+                liveDark85Min: clamp(liveDark85 * 0.92, 0.55, 0.98),
+                liveP10Max: clamp(liveP10 + 10, 10, 90)
+            };
+
+            saveCameraCalibration(calibration);
+            cameraCalibrationMode = false;
+            pendingCameraGrid = createCalibrationGrid();
+            cameraApplyButton.disabled = false;
+            drawCameraPreview(scores, pendingCameraGrid);
+            cameraStatus.textContent = 'Calibracao salva. Toque OK para testar esse padrao no grid ou capture outra foto normalmente.';
+        }
+
+        function analyzeGridImage(sourceCanvas) {
+            if (ROWS !== 14 || COLS !== 20) {
+                ROWS = 14;
+                COLS = 20;
+                updateSizeLabel();
+                resizeCanvas();
+            }
+
+            const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+            const width = sourceCanvas.width;
+            const height = sourceCanvas.height;
+            const imageData = sourceCtx.getImageData(0, 0, width, height);
+            const rawBounds = detectBoardBounds(imageData, width, height);
+            const tuning = buildCameraTuning();
+            const bounds = {
+                left: rawBounds.left + (rawBounds.right - rawBounds.left) * tuning.boardInsetLeft,
+                top: rawBounds.top + (rawBounds.bottom - rawBounds.top) * tuning.boardInsetTop,
+                right: rawBounds.right - (rawBounds.right - rawBounds.left) * tuning.boardInsetRight,
+                bottom: rawBounds.bottom - (rawBounds.bottom - rawBounds.top) * tuning.boardInsetBottom
+            };
+            const boardWidth = Math.max(1, bounds.right - bounds.left);
+            const boardHeight = Math.max(1, bounds.bottom - bounds.top);
+            const scores = [];
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const cellLeft = bounds.left + boardWidth * col / COLS;
+                    const cellTop = bounds.top + boardHeight * row / ROWS;
+                    const cellW = boardWidth / COLS;
+                    const cellH = boardHeight / ROWS;
+                    const sampleLeft = Math.floor(cellLeft + cellW * tuning.sampleInset);
+                    const sampleRight = Math.ceil(cellLeft + cellW * tuning.sampleEnd);
+                    const sampleTop = Math.floor(cellTop + cellH * tuning.sampleInset);
+                    const sampleBottom = Math.ceil(cellTop + cellH * tuning.sampleEnd);
+                    const lumas = [];
+
+                    for (let y = sampleTop; y < sampleBottom; y++) {
+                        if (y < 0 || y >= height) continue;
+                        for (let x = sampleLeft; x < sampleRight; x++) {
+                            if (x < 0 || x >= width) continue;
+                            const index = (y * width + x) * 4;
+                            const r = imageData.data[index];
+                            const g = imageData.data[index + 1];
+                            const b = imageData.data[index + 2];
+                            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+                            lumas.push(luma);
+                        }
+                    }
+
+                    lumas.sort((a, b) => a - b);
+                    const count = lumas.length;
+                    const dark35 = count ? lumas.filter((value) => value < 35).length / count : 0;
+                    const dark50 = count ? lumas.filter((value) => value < 50).length / count : 0;
+                    const dark65 = count ? lumas.filter((value) => value < 65).length / count : 0;
+                    const dark85 = count ? lumas.filter((value) => value < 85).length / count : 0;
+                    const p10 = count ? lumas[Math.floor(count * 0.1)] : 255;
+                    const median = count ? lumas[Math.floor(count * 0.5)] : 255;
+
+                    scores.push({
+                        row,
+                        col,
+                        dark35,
+                        dark50,
+                        dark65,
+                        dark85,
+                        p10,
+                        median
+                    });
+                }
+            }
+
+            if (cameraCalibrationMode) {
+                try {
+                    finishCameraCalibration(scores, bounds, width, height);
+                } catch (error) {
+                    cameraCalibrationMode = false;
+                    cameraApplyButton.disabled = true;
+                    cameraStatus.textContent = 'Falha na calibracao. Tente novamente com o grid vazio e 4 pecas nos cantos.';
+                }
+                return;
+            }
+
+            const nextGrid = createGrid();
+            let liveCount = 0;
+
+            scores.forEach((score) => {
+                const live =
+                    (score.dark35 > tuning.liveDark35Min && score.dark50 > tuning.liveDark50MinA && score.median < tuning.liveMedianMaxA) ||
+                    (score.dark50 > tuning.liveDark50MinB && score.median < tuning.liveMedianMaxB) ||
+                    (score.dark85 > tuning.liveDark85Min && score.p10 < tuning.liveP10Max && score.median < tuning.liveMedianMaxC);
+                if (live) {
+                    nextGrid[score.row][score.col] = 1;
+                    liveCount += 1;
+                }
+            });
+
+            pendingCameraGrid = nextGrid;
+            cameraApplyButton.disabled = false;
+            drawCameraPreview(scores, nextGrid);
+            cameraStatus.textContent = 'Preview com ' + liveCount + ' celulas vivas. Toque OK para aplicar ou tente outra foto.' + (cameraCalibration ? ' Calibracao ativa.' : '');
+        }
+
+        function applyCameraGrid() {
+            if (!pendingCameraGrid) return;
+            grid = pendingCameraGrid.map((row) => row.slice());
+            generation = 0;
+            refreshPatternOverlayIfOpen();
+            drawGrid();
+            updateStatus();
+            closeCameraPanel();
+        }
+
+        function drawCameraPreview(scores, recognizedGrid) {
+            cameraCanvas.hidden = false;
+            cameraPreviewWrap.classList.add('ready');
+            cameraCanvas.width = 800;
+            cameraCanvas.height = Math.round(800 * 14 / 20);
+            const previewCtx = cameraCanvas.getContext('2d');
+            previewCtx.fillStyle = '#eef2f7';
+            previewCtx.fillRect(0, 0, cameraCanvas.width, cameraCanvas.height);
+            const scaleX = cameraCanvas.width / COLS;
+            const scaleY = cameraCanvas.height / ROWS;
+
+            scores.forEach((score) => {
+                previewCtx.fillStyle = recognizedGrid[score.row][score.col] ? '#0b0f14' : '#eef2f7';
+                previewCtx.fillRect(score.col * scaleX, score.row * scaleY, scaleX, scaleY);
+            });
+
+            previewCtx.strokeStyle = '#8d97a3';
+            previewCtx.lineWidth = 1.4;
+            for (let row = 0; row <= ROWS; row++) {
+                const y = row * scaleY;
+                previewCtx.beginPath();
+                previewCtx.moveTo(0, y);
+                previewCtx.lineTo(cameraCanvas.width, y);
+                previewCtx.stroke();
+            }
+            for (let col = 0; col <= COLS; col++) {
+                const x = col * scaleX;
+                previewCtx.beginPath();
+                previewCtx.moveTo(x, 0);
+                previewCtx.lineTo(x, cameraCanvas.height);
+                previewCtx.stroke();
+            }
+        }
+
+        const patterns = {
+            glider: {
+                name: 'Glider',
+                category: 'Spaceship',
+                phaseCount: 4,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 0],
+                    [0, 0, 1],
+                    [1, 1, 1]
+                ]
+            },
+            lwss: {
+                name: 'LWSS',
+                category: 'Spaceship',
+                phaseCount: 4,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 0, 0, 1],
+                    [1, 0, 0, 0, 0],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 0]
+                ]
+            },
+            beacon: {
+                name: 'Beacon',
+                category: 'Oscillator',
+                phaseCount: 2,
+                mirrors: true,
+                pattern: [
+                    [1, 1, 0, 0],
+                    [1, 1, 0, 0],
+                    [0, 0, 1, 1],
+                    [0, 0, 1, 1]
+                ]
+            },
+            block: {
+                name: 'Block',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: false,
+                pattern: [
+                    [1, 1],
+                    [1, 1]
+                ]
+            },
+            boat: {
+                name: 'Boat',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: true,
+                pattern: [
+                    [1, 1, 0],
+                    [1, 0, 1],
+                    [0, 1, 0]
+                ]
+            },
+            tub: {
+                name: 'Tub',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: false,
+                pattern: [
+                    [0, 1, 0],
+                    [1, 0, 1],
+                    [0, 1, 0]
+                ]
+            },
+            toad: {
+                name: 'Toad',
+                category: 'Oscillator',
+                phaseCount: 2,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 1, 1],
+                    [1, 1, 1, 0]
+                ]
+            },
+            mold: {
+                name: 'Mold',
+                category: 'Oscillator',
+                phaseCount: 4,
+                mirrors: true,
+                pattern: [
+                    [0, 0, 0, 1, 1, 0],
+                    [0, 0, 1, 0, 0, 1],
+                    [1, 0, 0, 1, 0, 1],
+                    [0, 0, 0, 0, 1, 0],
+                    [1, 0, 1, 1, 0, 0],
+                    [0, 1, 0, 0, 0, 0]
+                ]
+            },
+            tripole: {
+                name: 'Tripole',
+                category: 'Oscillator',
+                phaseCount: 2,
+                mirrors: true,
+                pattern: [
+                    [1, 1, 0, 0, 0, 0],
+                    [1, 0, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 1, 0],
+                    [0, 0, 0, 0, 0, 1],
+                    [0, 0, 0, 0, 1, 1]
+                ]
+            },
+            jam: {
+                name: 'Jam',
+                category: 'Oscillator',
+                phaseCount: 3,
+                mirrors: true,
+                pattern: [
+                    [0, 0, 0, 1, 1, 0],
+                    [0, 0, 1, 0, 0, 1],
+                    [1, 0, 0, 1, 0, 1],
+                    [1, 0, 0, 0, 1, 0],
+                    [1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0, 0],
+                    [0, 1, 1, 0, 0, 0]
+                ]
+            },
+            loaf: {
+                name: 'Loaf',
+                category: 'Still Life',
+                phaseCount: 1,
+                mirrors: true,
+                pattern: [
+                    [0, 1, 1, 0],
+                    [1, 0, 0, 1],
+                    [0, 1, 0, 1],
+                    [0, 0, 1, 0]
+                ]
+            }
+        };
+
+        syncPatternColors();
+        const patternFamilies = createPatternFamilies();
+
+        canvas.addEventListener('click', (event) => {
+            if (longPressActive) {
+                longPressActive = false;
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            const col = Math.floor((x - gridOriginX) / cellSize);
+            const row = Math.floor((y - gridOriginY) / cellSize);
+
+            if (analysisMode) {
+                const found = findPatternAtCell(row, col);
+                if (found) {
+                    showPatternTip(found);
+                    return;
+                }
+
+                if (!patternCard.classList.contains('hidden')) {
+                    hidePatternTextPanel();
+                    return;
+                }
+
+                hidePatternTip();
+                return;
+            }
+
+            if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+                grid[row][col] = grid[row][col] ? 0 : 1;
+                refreshPatternOverlayIfOpen();
+                drawGrid();
+            }
+        });
+
+        function clearLongPressTimer() {
+            if (longPressTimer !== null) {
+                window.clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        }
+
+        function beginLongPress(event) {
+            if (event.target !== canvas) return;
+
+            clearLongPressTimer();
+            longPressActive = false;
+            longPressTimer = window.setTimeout(() => {
+                longPressActive = true;
+                toggleMenusVisible();
+            }, 520);
+        }
+
+        canvas.addEventListener('pointerdown', beginLongPress);
+        canvas.addEventListener('pointerup', clearLongPressTimer);
+        canvas.addEventListener('pointerleave', clearLongPressTimer);
+        canvas.addEventListener('pointercancel', clearLongPressTimer);
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === ' ') {
+                event.preventDefault();
+                toggleRun();
+            } else if (event.key === 'n' || event.key === 'N') {
+                stepOnce();
+            } else if (event.key === 'm' || event.key === 'M') {
+                toggleMenusVisible();
+            }
+        });
+
+        const topMenuToggle = document.getElementById('top-menu-toggle');
+        const topMenuPanel = document.getElementById('top-menu-panel');
+        const menuToggle = document.getElementById('menu-toggle');
+        const menuPanel = document.getElementById('menu-panel');
+
+        topMenuToggle.addEventListener('click', () => {
+            topMenuPanel.classList.toggle('open');
+        });
+
+        menuToggle.addEventListener('click', () => {
+            menuPanel.classList.toggle('open');
+        });
+
+        insertButton.addEventListener('click', () => {
+            insertPanel.classList.toggle('open');
+        });
+
+        sizeButton.addEventListener('click', () => {
+            sizePanel.classList.toggle('open');
+        });
+
+        document.getElementById('show-project').addEventListener('click', () => {
+            mainContent.style.display = '';
+            topMenuPanel.classList.remove('open');
+        });
+
+        document.getElementById('close-overlay').addEventListener('click', () => {
+            mainContent.style.display = 'none';
+            topMenuPanel.classList.remove('open');
+        });
+
+        document.getElementById('btn-play').addEventListener('click', toggleRun);
+        patternButton.addEventListener('click', () => {
+            setAnalysisMode(!analysisMode);
+        });
+        cameraButton.addEventListener('click', openCameraPanel);
+        cameraCaptureButton.addEventListener('click', captureCameraFrame);
+        cameraCloseButton.addEventListener('click', closeCameraPanel);
+        cameraFileButton.addEventListener('click', () => cameraFileInput.click());
+        cameraCalibrateButton.addEventListener('click', startCameraCalibration);
+        cameraApplyButton.addEventListener('click', applyCameraGrid);
+        cameraShotInput.addEventListener('change', (event) => {
+            loadCameraFile(event.target.files[0]);
+            event.target.value = '';
+        });
+        cameraFileInput.addEventListener('change', (event) => {
+            loadCameraFile(event.target.files[0]);
+            event.target.value = '';
+        });
+        patternCatalogButton.addEventListener('click', togglePatternCatalog);
+        overlapToggle.addEventListener('change', (event) => {
+            allowOverlappingPatterns = event.target.checked;
+            updateOverlapToggle();
+            refreshPatternOverlayIfOpen();
+            drawGrid();
+        });
+        patternDetailsButton.addEventListener('click', () => {
+            if (!analysisMode) return;
+            if (patternCard.classList.contains('hidden')) {
+                showPatternTextPanel();
+                hidePatternTip();
+            } else {
+                hidePatternTextPanel();
+            }
+        });
+        floatingStepButton.addEventListener('click', stepOnce);
+        patternCloseButton.addEventListener('click', hidePatternTextPanel);
+        document.getElementById('btn-random').addEventListener('click', randomizeGrid);
+        document.getElementById('btn-clear').addEventListener('click', clearGrid);
+        document.getElementById('btn-speedup').addEventListener('click', () => changeSpeed(-40));
+        document.getElementById('btn-speeddown').addEventListener('click', () => changeSpeed(40));
+        fullscreenButton.addEventListener('click', toggleFullscreen);
+        document.getElementById('btn-invert').addEventListener('click', () => {
+            inverted = !inverted;
+            uiRoot.classList.toggle('inverted-ui', inverted);
+            drawGrid();
+        });
+        document.getElementById('btn-border').addEventListener('click', () => {
+            wrapBorders = !wrapBorders;
+            updateBorderBtn();
+            updateStatus();
+        });
+        document.getElementById('btn-refresh').addEventListener('click', () => {
+            const freshUrl = window.location.pathname + '?refresh=' + Date.now();
+            window.location.replace(freshUrl);
+        });
+        sizeSlider.addEventListener('input', (event) => {
+            setGridResolution(Number(event.target.value));
+        });
+        document.getElementById('btn-rle').addEventListener('click', () => {
+            const rle = window.prompt('Cole o padrao RLE');
+            if (!rle) return;
+            const pattern = parseRLE(rle);
+            if (!pattern) {
+                window.alert('Padrao RLE invalido.');
+                return;
+            }
+            injectPattern(pattern);
+        });
+        installAppButton.addEventListener('click', installApp);
+        patternModal.addEventListener('click', (event) => {
+            if (event.target === patternModal) {
+                hidePatternTextPanel();
+            }
+        });
+        cameraModal.addEventListener('click', (event) => {
+            if (event.target === cameraModal) {
+                closeCameraPanel();
+            }
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('fullscreenchange', updateFullscreenBtn);
+
+        window.addEventListener('beforeinstallprompt', (event) => {
+            event.preventDefault();
+            deferredInstallPrompt = event;
+            installAppButton.hidden = false;
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            installAppButton.hidden = true;
+        });
+
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            window.screen.orientation.lock('landscape').catch(() => {});
+        }
+
+        if ('serviceWorker' in navigator && window.isSecureContext) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+
+        injectPattern(patterns.glider.pattern);
+        resizeCanvas();
+        renderPatternCatalog();
+        renderInsertOptions();
+        updateSizeLabel();
+        updatePlayPauseBtn();
+        updateBorderBtn();
+        updateFullscreenBtn();
+        updatePatternButton();
+        updatePatternDetailsButton();
+        updateOverlapToggle();
+        updateStatus();
+    </script>
+</body>
+</html>
