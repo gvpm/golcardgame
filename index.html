@@ -2084,7 +2084,7 @@
                 const y = Math.min(height - 1, Math.floor((sy + 0.5) * height / scaledHeight));
                 for (let sx = 0; sx < scaledWidth; sx++) {
                     const x = Math.min(width - 1, Math.floor((sx + 0.5) * width / scaledWidth));
-                    mask[sy * scaledWidth + sx] = getImageLuma(data, width, x, y) < 65 ? 1 : 0;
+                    mask[sy * scaledWidth + sx] = getImageLuma(data, width, x, y) < 55 ? 1 : 0;
                 }
             }
 
@@ -2256,6 +2256,69 @@
             return normalizedCanvas;
         }
 
+        function cleanNoisyCameraGrid(candidateGrid) {
+            const liveCells = [];
+            candidateGrid.forEach((row, rowIndex) => {
+                row.forEach((value, colIndex) => {
+                    if (value) liveCells.push([rowIndex, colIndex]);
+                });
+            });
+
+            if (liveCells.length <= 50) {
+                return candidateGrid;
+            }
+
+            const cleanedGrid = createGrid();
+            const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+            const directions = [
+                [1, 0],
+                [-1, 0],
+                [0, 1],
+                [0, -1]
+            ];
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    if (!candidateGrid[row][col] || visited[row][col]) continue;
+
+                    const queue = [[row, col]];
+                    const component = [];
+                    let head = 0;
+                    let touchesEdge = false;
+                    visited[row][col] = true;
+
+                    while (head < queue.length) {
+                        const [currentRow, currentCol] = queue[head];
+                        head += 1;
+                        component.push([currentRow, currentCol]);
+                        touchesEdge =
+                            touchesEdge ||
+                            currentRow === 0 ||
+                            currentCol === 0 ||
+                            currentRow === ROWS - 1 ||
+                            currentCol === COLS - 1;
+
+                        directions.forEach(([rowDelta, colDelta]) => {
+                            const nextRow = currentRow + rowDelta;
+                            const nextCol = currentCol + colDelta;
+                            if (nextRow < 0 || nextRow >= ROWS || nextCol < 0 || nextCol >= COLS) return;
+                            if (!candidateGrid[nextRow][nextCol] || visited[nextRow][nextCol]) return;
+                            visited[nextRow][nextCol] = true;
+                            queue.push([nextRow, nextCol]);
+                        });
+                    }
+
+                    if (!touchesEdge && component.length <= 12) {
+                        component.forEach(([componentRow, componentCol]) => {
+                            cleanedGrid[componentRow][componentCol] = 1;
+                        });
+                    }
+                }
+            }
+
+            return cleanedGrid;
+        }
+
         function smoothProfile(values, radius) {
             return values.map((_, index) => {
                 let sum = 0;
@@ -2416,9 +2479,17 @@
                 }
             });
 
-            pendingCameraGrid = nextGrid;
+            const cleanedGrid = cleanNoisyCameraGrid(nextGrid);
+            liveCount = 0;
+            cleanedGrid.forEach((row) => {
+                row.forEach((value) => {
+                    if (value) liveCount += 1;
+                });
+            });
+
+            pendingCameraGrid = cleanedGrid;
             cameraApplyButton.disabled = false;
-            drawCameraPreview(scores, nextGrid);
+            drawCameraPreview(scores, cleanedGrid);
             cameraStatus.textContent = 'Preview com ' + liveCount + ' celulas vivas. Toque OK para aplicar ou tente outra foto.';
         }
 
