@@ -1195,6 +1195,7 @@
         let pendingCameraLiveCount = 0;
         let cameraCalibrationProfile = null;
         let cameraThresholdAdjustment = 0;
+        let cameraPickerIgnoreCloseUntil = 0;
         const patternColorPalette = [
             { fill: 'rgba(34, 197, 94, 0.18)', stroke: 'rgba(34, 197, 94, 0.96)', solid: '#22c55e' },
             { fill: 'rgba(59, 130, 246, 0.17)', stroke: 'rgba(59, 130, 246, 0.96)', solid: '#3b82f6' },
@@ -2189,6 +2190,7 @@
         }
 
         function closeCameraPanel() {
+            if (Date.now() < cameraPickerIgnoreCloseUntil) return;
             cameraModal.classList.remove('open');
             cameraButton.classList.remove('active');
             pendingCameraGrid = null;
@@ -2198,14 +2200,25 @@
         }
 
         function captureCameraFrame() {
+            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
             cameraShotInput.click();
+        }
+
+        function captureCameraCalibrationFrame() {
+            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
+            cameraCalibrationShotInput.click();
         }
 
         function loadCameraFile(file) {
             if (!file) return;
+            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
+            cameraModal.classList.add('open');
+            cameraButton.classList.add('active');
+            cameraStatus.textContent = 'Processando foto...';
 
             const image = new Image();
             image.onload = () => {
+                cameraPickerIgnoreCloseUntil = Date.now() + 1200;
                 URL.revokeObjectURL(image.src);
                 const capture = document.createElement('canvas');
                 capture.width = image.naturalWidth;
@@ -2218,9 +2231,14 @@
 
         function loadCameraCalibrationFile(file) {
             if (!file) return;
+            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
+            cameraModal.classList.add('open');
+            cameraButton.classList.add('active');
+            cameraStatus.textContent = 'Processando calibracao...';
 
             const image = new Image();
             image.onload = () => {
+                cameraPickerIgnoreCloseUntil = Date.now() + 1200;
                 URL.revokeObjectURL(image.src);
                 const capture = document.createElement('canvas');
                 capture.width = image.naturalWidth;
@@ -3524,7 +3542,7 @@
             refreshPatternOverlayIfOpen();
             drawGrid();
             updateStatus();
-            closeCameraPanel();
+            cameraStatus.textContent = 'Grid aplicado. Voce pode testar outra foto, ajustar de novo ou fechar no X.';
         }
 
         function drawCameraPreview(scores, recognizedGrid) {
@@ -3826,7 +3844,7 @@
         cameraCaptureButton.addEventListener('click', captureCameraFrame);
         cameraCloseButton.addEventListener('click', closeCameraPanel);
         cameraFileButton.addEventListener('click', () => cameraFileInput.click());
-        cameraCalibrateCaptureButton.addEventListener('click', () => cameraCalibrationShotInput.click());
+        cameraCalibrateCaptureButton.addEventListener('click', captureCameraCalibrationFrame);
         cameraCalibrateFileButton.addEventListener('click', () => cameraCalibrationInput.click());
         cameraClearCalibrationButton.addEventListener('click', clearCameraCalibration);
         cameraApplyButton.addEventListener('click', applyCameraGrid);
