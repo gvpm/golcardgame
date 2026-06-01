@@ -2229,11 +2229,28 @@
             loadImageFileToCanvas(file, calibrateCameraRecognition);
         }
 
-        function loadImageFileToCanvas(file, callback) {
-            const maxSide = 1600;
+        async function loadImageFileToCanvas(file, callback) {
+            const maxSide = 1280;
+            if ('createImageBitmap' in window) {
+                try {
+                    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+                    cameraPickerIgnoreCloseUntil = Date.now() + 1600;
+                    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+                    const capture = document.createElement('canvas');
+                    capture.width = Math.max(1, Math.round(bitmap.width * scale));
+                    capture.height = Math.max(1, Math.round(bitmap.height * scale));
+                    capture.getContext('2d').drawImage(bitmap, 0, 0, capture.width, capture.height);
+                    if (typeof bitmap.close === 'function') bitmap.close();
+                    callback(capture);
+                    return;
+                } catch (error) {
+                    // Some mobile browsers expose createImageBitmap but reject camera blobs.
+                }
+            }
+
             const image = new Image();
             image.onload = () => {
-                cameraPickerIgnoreCloseUntil = Date.now() + 1200;
+                cameraPickerIgnoreCloseUntil = Date.now() + 1600;
                 URL.revokeObjectURL(image.src);
                 const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
                 const capture = document.createElement('canvas');
@@ -2258,8 +2275,12 @@
             }
 
             cameraCalibrationProfile = profile;
+            cameraThresholdAdjustment = 0;
+            cameraThresholdSlider.value = '0';
+            updateCameraThresholdLabel();
             try {
                 localStorage.setItem('golCameraCalibrationProfile', JSON.stringify(profile));
+                localStorage.setItem('golCameraThresholdAdjustment', '0');
             } catch (error) {
                 // Calibration still works in memory when storage is unavailable.
             }
@@ -3270,6 +3291,107 @@
             };
         }
 
+        function buildDarkLineProfile(imageData, axis, startA, endA, startB, endB) {
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            const profileLength = axis === 'x' ? width : height;
+            const profile = Array(profileLength).fill(0);
+            const a0 = Math.max(0, Math.floor(startA));
+            const a1 = Math.min(profileLength - 1, Math.ceil(endA));
+            const bLimit = axis === 'x' ? height : width;
+            const b0 = Math.max(0, Math.floor(startB));
+            const b1 = Math.min(bLimit - 1, Math.ceil(endB));
+            const count = Math.max(1, b1 - b0 + 1);
+
+            for (let a = a0; a <= a1; a++) {
+                let sum = 0;
+                for (let b = b0; b <= b1; b++) {
+                    const x = axis === 'x' ? a : b;
+                    const y = axis === 'x' ? b : a;
+                    const luma = getImageLuma(data, width, x, y);
+                    sum += Math.max(0, 120 - luma) / 120;
+                }
+                profile[a] = sum / count;
+            }
+
+            return smoothProfile(profile, 1);
+        }
+
+        function findRegularGridAxis(profile, expectedStart, expectedEnd, divisions, searchRadius, spacingTolerance) {
+            const expectedSpacing = (expectedEnd - expectedStart) / divisions;
+            let best = null;
+            const spacingMin = expectedSpacing * (1 - spacingTolerance);
+            const spacingMax = expectedSpacing * (1 + spacingTolerance);
+
+            for (let spacing = spacingMin; spacing <= spacingMax; spacing += 0.45) {
+                for (let start = expectedStart - searchRadius; start <= expectedStart + searchRadius; start += 1) {
+                    const end = start + spacing * divisions;
+                    if (start < 0 || end >= profile.length) continue;
+
+                    let score = 0;
+                    let validLines = 0;
+                    for (let index = 0; index <= divisions; index++) {
+                        const center = start + spacing * index;
+                        const lineCenter = Math.round(center);
+                        let lineScore = 0;
+                        for (let delta = -2; delta <= 2; delta++) {
+                            const sampleIndex = lineCenter + delta;
+                            if (sampleIndex < 0 || sampleIndex >= profile.length) continue;
+                            lineScore = Math.max(lineScore, profile[sampleIndex]);
+                        }
+                        score += lineScore;
+                        validLines += 1;
+                    }
+
+                    score = score / Math.max(1, validLines);
+                    score -= Math.abs(spacing - expectedSpacing) / expectedSpacing * 0.03;
+
+                    if (!best || score > best.score) {
+                        best = { start, end, spacing, score };
+                    }
+                }
+            }
+
+            return best;
+        }
+
+        function refineMarkerGridBounds(imageData, approximateBounds) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const padX = Math.max(18, (approximateBounds.right - approximateBounds.left) * 0.04);
+            const padY = Math.max(18, (approximateBounds.bottom - approximateBounds.top) * 0.04);
+            const xProfile = buildDarkLineProfile(
+                imageData,
+                'x',
+                approximateBounds.left - padX,
+                approximateBounds.right + padX,
+                approximateBounds.top - padY,
+                approximateBounds.bottom + padY
+            );
+            const xAxis = findRegularGridAxis(xProfile, approximateBounds.left, approximateBounds.right, COLS, padX * 1.25, 0.08);
+            const xLeft = xAxis && xAxis.score > 0.12 ? xAxis.start : approximateBounds.left;
+            const xRight = xAxis && xAxis.score > 0.12 ? xAxis.end : approximateBounds.right;
+            const yProfile = buildDarkLineProfile(
+                imageData,
+                'y',
+                approximateBounds.top - padY,
+                approximateBounds.bottom + padY,
+                xLeft - padX,
+                xRight + padX
+            );
+            const yAxis = findRegularGridAxis(yProfile, approximateBounds.top, approximateBounds.bottom, ROWS, padY * 1.25, 0.08);
+            const yTop = yAxis && yAxis.score > 0.12 ? yAxis.start : approximateBounds.top;
+            const yBottom = yAxis && yAxis.score > 0.12 ? yAxis.end : approximateBounds.bottom;
+
+            return {
+                left: Math.max(0, Math.min(width - 10, xLeft)),
+                top: Math.max(0, Math.min(height - 10, yTop)),
+                right: Math.min(width, Math.max(10, xRight)),
+                bottom: Math.min(height, Math.max(10, yBottom))
+            };
+        }
+
         function ensureCameraGridResolution() {
             if (ROWS !== 14 || COLS !== 20) {
                 ROWS = 14;
@@ -3287,8 +3409,11 @@
             const height = normalizedCanvas.height;
             const imageData = sourceCtx.getImageData(0, 0, width, height);
             const fallbackBounds = () => detectGridBounds(imageData, width, height, detectOuterBoardBounds(imageData, width, height));
+            const markerBounds = normalizedCanvas.markerAligned && normalizedCanvas.markerGridBounds
+                ? refineMarkerGridBounds(imageData, normalizedCanvas.markerGridBounds)
+                : null;
             const bounds = normalizedCanvas.markerAligned
-                ? (normalizedCanvas.markerGridBounds || detectMarkerGridBounds(imageData, width, height) || fallbackBounds())
+                ? (markerBounds || detectMarkerGridBounds(imageData, width, height) || fallbackBounds())
                 : fallbackBounds();
             const boardWidth = Math.max(1, bounds.right - bounds.left);
             const boardHeight = Math.max(1, bounds.bottom - bounds.top);
@@ -3385,8 +3510,60 @@
             return new Set(['6,9', '6,10', '7,9', '7,10']);
         }
 
+        function findCalibrationBlockCells(scores) {
+            const byKey = new Map(scores.map((score) => [getScoreCellKey(score), score]));
+            const expectedRow = Math.floor(ROWS / 2) - 1;
+            const expectedCol = Math.floor(COLS / 2) - 1;
+            const searchRowStart = Math.max(0, expectedRow - 3);
+            const searchRowEnd = Math.min(ROWS - 2, expectedRow + 3);
+            const searchColStart = Math.max(0, expectedCol - 4);
+            const searchColEnd = Math.min(COLS - 2, expectedCol + 4);
+            let best = null;
+
+            for (let startRow = searchRowStart; startRow <= searchRowEnd; startRow++) {
+                for (let startCol = searchColStart; startCol <= searchColEnd; startCol++) {
+                    const block = [
+                        byKey.get(startRow + ',' + startCol),
+                        byKey.get(startRow + ',' + (startCol + 1)),
+                        byKey.get((startRow + 1) + ',' + startCol),
+                        byKey.get((startRow + 1) + ',' + (startCol + 1))
+                    ];
+                    if (block.some((score) => !score)) continue;
+
+                    const blockFeatures = block.map(getCameraDarkFeature);
+                    const ringFeatures = [];
+                    for (let row = Math.max(0, startRow - 2); row <= Math.min(ROWS - 1, startRow + 3); row++) {
+                        for (let col = Math.max(0, startCol - 2); col <= Math.min(COLS - 1, startCol + 3); col++) {
+                            const isBlock = row >= startRow && row <= startRow + 1 && col >= startCol && col <= startCol + 1;
+                            if (isBlock) continue;
+                            const score = byKey.get(row + ',' + col);
+                            if (score) ringFeatures.push(getCameraDarkFeature(score));
+                        }
+                    }
+
+                    const blockAverage = blockFeatures.reduce((sum, value) => sum + value, 0) / blockFeatures.length;
+                    const blockLow = getPercentile(blockFeatures, 0.1);
+                    const ringMedian = getPercentile(ringFeatures, 0.5);
+                    const ringP90 = getPercentile(ringFeatures, 0.9);
+                    const contrast = blockLow - ringP90;
+                    const centerPenalty = (Math.abs(startRow - expectedRow) + Math.abs(startCol - expectedCol)) * 0.018;
+                    const candidateScore = contrast + (blockAverage - ringMedian) * 0.55 - centerPenalty;
+
+                    if (!best || candidateScore > best.score) {
+                        best = {
+                            cells: new Set(block.map(getScoreCellKey)),
+                            contrast,
+                            score: candidateScore
+                        };
+                    }
+                }
+            }
+
+            return best && best.contrast > 0.025 ? best.cells : getCalibrationBlockCells();
+        }
+
         function buildCameraCalibrationProfile(scores) {
-            const blockCells = getCalibrationBlockCells();
+            const blockCells = findCalibrationBlockCells(scores);
             const liveScores = scores.filter((score) => blockCells.has(getScoreCellKey(score)));
             const emptyScores = scores.filter((score) => !blockCells.has(getScoreCellKey(score)));
             if (liveScores.length !== 4 || emptyScores.length < 200) return null;
@@ -3397,67 +3574,41 @@
             const liveLow = getPercentile(liveFeatures, 0.1);
             const emptyMedian = getPercentile(emptyFeatures, 0.5);
             const emptyP90 = getPercentile(emptyFeatures, 0.9);
-            const emptyP97 = getPercentile(emptyFeatures, 0.97);
-            const localEmptyScores = emptyScores.filter((score) =>
-                Math.abs(score.row - 6.5) <= 3 &&
-                Math.abs(score.col - 9.5) <= 4
-            );
-            const localEmptyFeatures = (localEmptyScores.length >= 12 ? localEmptyScores : emptyScores).map(getCameraDarkFeature);
-            const localEmptyMedian = getPercentile(localEmptyFeatures, 0.5);
-            const liveDelta = Math.max(0.04, liveMedian - localEmptyMedian);
-            const noiseDelta = Math.max(0.02, emptyP97 - emptyMedian);
-            const featureDeltaThreshold = Math.max(liveDelta * 0.42, noiseDelta * 1.35, 0.055);
-            const liveP10Median = getPercentile(liveScores.map((score) => score.p10), 0.5);
-            const liveMedianLuma = getPercentile(liveScores.map((score) => score.median), 0.5);
-            const liveDark85Low = getPercentile(liveScores.map((score) => score.dark85), 0.1);
-            const liveDark50Low = getPercentile(liveScores.map((score) => score.dark50), 0.1);
-            const localEmptyP10 = getPercentile((localEmptyScores.length >= 12 ? localEmptyScores : emptyScores).map((score) => score.p10), 0.5);
-            const localEmptyMedianLuma = getPercentile((localEmptyScores.length >= 12 ? localEmptyScores : emptyScores).map((score) => score.median), 0.5);
-            const p10Drop = Math.max(12, localEmptyP10 - liveP10Median);
-            const medianDrop = Math.max(16, localEmptyMedianLuma - liveMedianLuma);
-
-            const emptyByCell = {};
-            const fallbackEmpty = {
-                feature: emptyMedian,
-                p10: getPercentile(emptyScores.map((score) => score.p10), 0.5),
-                median: getPercentile(emptyScores.map((score) => score.median), 0.5),
-                dark85: getPercentile(emptyScores.map((score) => score.dark85), 0.5)
-            };
-
-            emptyScores.forEach((score) => {
-                emptyByCell[getScoreCellKey(score)] = {
-                    feature: getCameraDarkFeature(score),
-                    p10: score.p10,
-                    median: score.median,
-                    dark85: score.dark85
-                };
-            });
+            const emptyP95 = getPercentile(emptyFeatures, 0.95);
+            const emptyP98 = getPercentile(emptyFeatures, 0.98);
+            const liveP10High = getPercentile(liveScores.map((score) => score.p10), 0.9);
+            const liveMedianLumaHigh = getPercentile(liveScores.map((score) => score.median), 0.9);
+            const liveDark85Median = getPercentile(liveScores.map((score) => score.dark85), 0.5);
+            const liveDark50Median = getPercentile(liveScores.map((score) => score.dark50), 0.5);
+            const emptyP10Low = getPercentile(emptyScores.map((score) => score.p10), 0.08);
+            const emptyMedianLumaLow = getPercentile(emptyScores.map((score) => score.median), 0.08);
+            const emptyDark85P95 = getPercentile(emptyScores.map((score) => score.dark85), 0.95);
+            const emptyDark50P95 = getPercentile(emptyScores.map((score) => score.dark50), 0.95);
+            const featureGap = Math.max(0.02, liveMedian - emptyP95);
+            const lumaGap = Math.max(10, emptyP10Low - liveP10High);
+            const medianGap = Math.max(12, emptyMedianLumaLow - liveMedianLumaHigh);
 
             return {
-                version: 4,
+                version: 5,
+                blockCells: Array.from(blockCells),
                 livePrototype: {
                     feature: liveMedian,
                     featureLow: liveLow,
-                    p10: liveP10Median,
-                    median: liveMedianLuma,
-                    dark85Low: liveDark85Low,
-                    dark50Low: liveDark50Low
+                    p10: liveP10High,
+                    median: liveMedianLumaHigh,
+                    dark85: liveDark85Median,
+                    dark50: liveDark50Median
                 },
-                featureDeltaThreshold,
-                p10DropThreshold: Math.max(8, p10Drop * 0.36),
-                medianDropThreshold: Math.max(10, medianDrop * 0.36),
-                dark85DeltaThreshold: 0.22,
+                featureThreshold: Math.max(emptyMedian + Math.max(0.035, (emptyP90 - emptyMedian) * 1.6), emptyP95 + featureGap * 0.28),
+                dark85Threshold: Math.max(emptyDark85P95 + 0.04, liveDark85Median * 0.46),
+                dark50Threshold: Math.max(emptyDark50P95 + 0.035, liveDark50Median * 0.42),
+                p10Threshold: Math.min(emptyP10Low - 4, liveP10High + lumaGap * 0.38),
+                medianThreshold: Math.min(emptyMedianLumaLow - 5, liveMedianLumaHigh + medianGap * 0.42),
                 liveMedian,
-                liveP10Median,
-                liveMedianLuma,
                 emptyMedian,
                 emptyP90,
-                emptyP97,
-                localEmptyMedian,
-                liveDelta,
-                noiseDelta,
-                emptyByCell,
-                fallbackEmpty,
+                emptyP95,
+                emptyP98,
                 createdAt: Date.now()
             };
         }
@@ -3476,37 +3627,17 @@
             const adjustment = getCameraAdjustmentRatio();
             if (cameraCalibrationProfile) {
                 const feature = getCameraDarkFeature(score);
-                const livePrototype = cameraCalibrationProfile.livePrototype || {
-                    feature: cameraCalibrationProfile.liveMedian || 0.4,
-                    featureLow: cameraCalibrationProfile.liveMedian || 0.4,
-                    p10: cameraCalibrationProfile.liveP10Median || 70,
-                    median: cameraCalibrationProfile.liveMedianLuma || 100,
-                    dark85Low: 0.45,
-                    dark50Low: 0.2
-                };
-                const emptyReference =
-                    cameraCalibrationProfile.emptyByCell?.[getScoreCellKey(score)] ||
-                    cameraCalibrationProfile.fallbackEmpty ||
-                    { feature: cameraCalibrationProfile.emptyMedian || 0, p10: 255, median: 255, dark85: 0 };
-                const featureDelta = feature - emptyReference.feature;
-                const p10Drop = emptyReference.p10 - score.p10;
-                const medianDrop = emptyReference.median - score.median;
-                const dark85Delta = score.dark85 - emptyReference.dark85;
-                const sensitivity = 1 - adjustment * 0.38;
-                const liveLike =
-                    feature >= livePrototype.featureLow * (0.88 - adjustment * 0.16) ||
-                    score.dark85 >= livePrototype.dark85Low * (0.84 - adjustment * 0.16) ||
-                    score.dark50 >= livePrototype.dark50Low * (0.78 - adjustment * 0.16) ||
-                    score.p10 <= livePrototype.p10 + 36 + adjustment * 22 ||
-                    score.median <= livePrototype.median + 46 + adjustment * 28;
-                const featurePass = featureDelta >= cameraCalibrationProfile.featureDeltaThreshold * sensitivity;
-                const p10Pass = p10Drop >= cameraCalibrationProfile.p10DropThreshold * sensitivity;
-                const medianPass = medianDrop >= cameraCalibrationProfile.medianDropThreshold * sensitivity;
-                const darkPass = dark85Delta >= cameraCalibrationProfile.dark85DeltaThreshold * sensitivity;
-                const blackEvidence = score.dark50 > 0.18 + Math.max(0, -adjustment) * 0.06 || score.p10 < 82 + adjustment * 18;
-                const votes = [featurePass, p10Pass, medianPass, darkPass].filter(Boolean).length;
+                const featureThreshold = (cameraCalibrationProfile.featureThreshold || 0.42) * (1 - adjustment * 0.34);
+                const dark85Threshold = Math.max(0.04, (cameraCalibrationProfile.dark85Threshold || 0.42) * (1 - adjustment * 0.28));
+                const dark50Threshold = Math.max(0.03, (cameraCalibrationProfile.dark50Threshold || 0.22) * (1 - adjustment * 0.28));
+                const p10Threshold = (cameraCalibrationProfile.p10Threshold || 82) + adjustment * 26;
+                const medianThreshold = (cameraCalibrationProfile.medianThreshold || 112) + adjustment * 34;
+                const featurePass = feature >= featureThreshold;
+                const darkPass = score.dark85 >= dark85Threshold || score.dark50 >= dark50Threshold;
+                const lumaPass = score.p10 <= p10Threshold || score.median <= medianThreshold;
+                const strongBlack = score.dark50 >= dark50Threshold * 1.25 || score.p10 <= p10Threshold - 16;
 
-                return liveLike && ((votes >= 1 && blackEvidence) || votes >= 2);
+                return (featurePass && (darkPass || lumaPass)) || (strongBlack && darkPass && lumaPass);
             }
 
             return (
@@ -3763,7 +3894,7 @@
             const savedCalibration = localStorage.getItem('golCameraCalibrationProfile');
             if (savedCalibration) {
                 const parsedCalibration = JSON.parse(savedCalibration);
-                cameraCalibrationProfile = parsedCalibration?.version === 4 ? parsedCalibration : null;
+                cameraCalibrationProfile = parsedCalibration?.version === 5 ? parsedCalibration : null;
                 if (!cameraCalibrationProfile) {
                     localStorage.removeItem('golCameraCalibrationProfile');
                 }
@@ -3880,9 +4011,15 @@
         cameraButton.addEventListener('click', openCameraPanel);
         cameraCaptureButton.addEventListener('click', captureCameraFrame);
         cameraCloseButton.addEventListener('click', closeCameraPanel);
-        cameraFileButton.addEventListener('click', () => cameraFileInput.click());
+        cameraFileButton.addEventListener('click', () => {
+            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
+            cameraFileInput.click();
+        });
         cameraCalibrateCaptureButton.addEventListener('click', captureCameraCalibrationFrame);
-        cameraCalibrateFileButton.addEventListener('click', () => cameraCalibrationInput.click());
+        cameraCalibrateFileButton.addEventListener('click', () => {
+            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
+            cameraCalibrationInput.click();
+        });
         cameraClearCalibrationButton.addEventListener('click', clearCameraCalibration);
         cameraApplyButton.addEventListener('click', applyCameraGrid);
         cameraThresholdSlider.addEventListener('input', () => {
