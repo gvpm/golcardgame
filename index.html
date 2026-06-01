@@ -1071,13 +1071,15 @@
             <div class="camera-actions">
                 <button id="camera-capture">Camera</button>
                 <button id="camera-file-button">Arquivo</button>
-                <button id="camera-calibrate-button">Calibrar</button>
+                <button id="camera-calibrate-capture">Calib. camera</button>
+                <button id="camera-calibrate-file-button">Calib. arquivo</button>
                 <button id="camera-clear-calibration">Reset calib.</button>
                 <button class="camera-apply" id="camera-apply" disabled>OK</button>
             </div>
             <p class="camera-status" id="camera-status">Escolha uma foto do grid 20 x 14.</p>
             <input id="camera-shot-file" type="file" accept="image/*" capture="environment" hidden>
             <input id="camera-file" type="file" accept="image/*" hidden>
+            <input id="camera-calibration-shot-file" type="file" accept="image/*" capture="environment" hidden>
             <input id="camera-calibration-file" type="file" accept="image/*" hidden>
         </div>
     </div>
@@ -1137,10 +1139,12 @@
         const cameraCaptureButton = document.getElementById('camera-capture');
         const cameraCloseButton = document.getElementById('camera-close');
         const cameraFileButton = document.getElementById('camera-file-button');
-        const cameraCalibrateButton = document.getElementById('camera-calibrate-button');
+        const cameraCalibrateCaptureButton = document.getElementById('camera-calibrate-capture');
+        const cameraCalibrateFileButton = document.getElementById('camera-calibrate-file-button');
         const cameraClearCalibrationButton = document.getElementById('camera-clear-calibration');
         const cameraShotInput = document.getElementById('camera-shot-file');
         const cameraFileInput = document.getElementById('camera-file');
+        const cameraCalibrationShotInput = document.getElementById('camera-calibration-shot-file');
         const cameraCalibrationInput = document.getElementById('camera-calibration-file');
         const cameraApplyButton = document.getElementById('camera-apply');
         const cameraStatus = document.getElementById('camera-status');
@@ -3682,7 +3686,8 @@
         cameraCaptureButton.addEventListener('click', captureCameraFrame);
         cameraCloseButton.addEventListener('click', closeCameraPanel);
         cameraFileButton.addEventListener('click', () => cameraFileInput.click());
-        cameraCalibrateButton.addEventListener('click', () => cameraCalibrationInput.click());
+        cameraCalibrateCaptureButton.addEventListener('click', () => cameraCalibrationShotInput.click());
+        cameraCalibrateFileButton.addEventListener('click', () => cameraCalibrationInput.click());
         cameraClearCalibrationButton.addEventListener('click', clearCameraCalibration);
         cameraApplyButton.addEventListener('click', applyCameraGrid);
         cameraShotInput.addEventListener('change', (event) => {
@@ -3691,6 +3696,10 @@
         });
         cameraFileInput.addEventListener('change', (event) => {
             loadCameraFile(event.target.files[0]);
+            event.target.value = '';
+        });
+        cameraCalibrationShotInput.addEventListener('change', (event) => {
+            loadCameraCalibrationFile(event.target.files[0]);
             event.target.value = '';
         });
         cameraCalibrationInput.addEventListener('change', (event) => {
