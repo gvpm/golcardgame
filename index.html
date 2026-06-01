@@ -2202,7 +2202,7 @@
             } catch (error) {
                 // Calibration still works in memory when storage is unavailable.
             }
-            cameraStatus.textContent = 'Calibracao ativa. Agora use Camera ou Arquivo para reconhecer o grid neste ambiente.';
+            cameraStatus.textContent = 'Calibracao por celula ativa. Agora use Camera ou Arquivo para reconhecer o grid neste ambiente.';
             cameraCanvas.hidden = true;
             cameraPreviewWrap.classList.remove('ready');
             pendingCameraGrid = null;
@@ -3296,6 +3296,10 @@
             );
         }
 
+        function getScoreCellKey(score) {
+            return score.row + ',' + score.col;
+        }
+
         function getPercentile(values, percentile) {
             if (!values.length) return 0;
             const sorted = values.slice().sort((a, b) => a - b);
@@ -3309,25 +3313,52 @@
 
         function buildCameraCalibrationProfile(scores) {
             const blockCells = getCalibrationBlockCells();
-            const liveScores = scores.filter((score) => blockCells.has(score.row + ',' + score.col));
-            const emptyScores = scores.filter((score) => !blockCells.has(score.row + ',' + score.col));
+            const liveScores = scores.filter((score) => blockCells.has(getScoreCellKey(score)));
+            const emptyScores = scores.filter((score) => !blockCells.has(getScoreCellKey(score)));
             if (liveScores.length !== 4 || emptyScores.length < 200) return null;
 
             const liveFeatures = liveScores.map(getCameraDarkFeature);
             const emptyFeatures = emptyScores.map(getCameraDarkFeature);
             const liveLow = getPercentile(liveFeatures, 0.15);
             const liveMedian = getPercentile(liveFeatures, 0.5);
+            const liveP10Median = getPercentile(liveScores.map((score) => score.p10), 0.5);
+            const liveMedianLuma = getPercentile(liveScores.map((score) => score.median), 0.5);
             const emptyHigh = getPercentile(emptyFeatures, 0.97);
+            const emptyMedian = getPercentile(emptyFeatures, 0.5);
             let threshold = (liveLow + emptyHigh) / 2;
 
             if (threshold >= liveLow) {
                 threshold = liveLow * 0.88;
             }
 
+            const emptyByCell = {};
+            const fallbackEmpty = {
+                feature: emptyMedian,
+                p10: getPercentile(emptyScores.map((score) => score.p10), 0.5),
+                median: getPercentile(emptyScores.map((score) => score.median), 0.5),
+                dark85: getPercentile(emptyScores.map((score) => score.dark85), 0.5)
+            };
+
+            emptyScores.forEach((score) => {
+                emptyByCell[getScoreCellKey(score)] = {
+                    feature: getCameraDarkFeature(score),
+                    p10: score.p10,
+                    median: score.median,
+                    dark85: score.dark85
+                };
+            });
+
             return {
+                version: 2,
                 threshold,
                 liveMedian,
+                liveLow,
+                liveP10Median,
+                liveMedianLuma,
                 emptyHigh,
+                emptyMedian,
+                emptyByCell,
+                fallbackEmpty,
                 liveP10Max: Math.max(...liveScores.map((score) => score.p10)) + 14,
                 liveMedianMax: Math.max(...liveScores.map((score) => score.median)) + 26,
                 createdAt: Date.now()
@@ -3337,13 +3368,24 @@
         function classifyCameraScore(score) {
             if (cameraCalibrationProfile) {
                 const feature = getCameraDarkFeature(score);
-                return (
-                    feature >= cameraCalibrationProfile.threshold &&
-                    (
-                        score.p10 <= cameraCalibrationProfile.liveP10Max ||
-                        score.median <= cameraCalibrationProfile.liveMedianMax
-                    )
-                );
+                const emptyReference =
+                    cameraCalibrationProfile.emptyByCell?.[getScoreCellKey(score)] ||
+                    cameraCalibrationProfile.fallbackEmpty ||
+                    { feature: cameraCalibrationProfile.emptyMedian || 0, p10: 255, median: 255, dark85: 0 };
+                const liveGap = Math.max(0.08, (cameraCalibrationProfile.liveMedian || cameraCalibrationProfile.threshold) - (cameraCalibrationProfile.emptyMedian || emptyReference.feature));
+                const relativeFeatureThreshold = emptyReference.feature + liveGap * 0.42;
+                const absoluteFeatureThreshold = cameraCalibrationProfile.threshold;
+                const darkerThanOwnEmpty =
+                    feature >= relativeFeatureThreshold ||
+                    emptyReference.p10 - score.p10 > 28 ||
+                    emptyReference.median - score.median > 36 ||
+                    score.dark85 - emptyReference.dark85 > 0.34;
+                const resemblesCalibratedPiece =
+                    score.p10 <= (cameraCalibrationProfile.liveP10Median + 35) ||
+                    score.median <= (cameraCalibrationProfile.liveMedianLuma + 42) ||
+                    feature >= absoluteFeatureThreshold;
+
+                return darkerThanOwnEmpty && resemblesCalibratedPiece;
             }
 
             return (
@@ -3571,7 +3613,11 @@
         try {
             const savedCalibration = localStorage.getItem('golCameraCalibrationProfile');
             if (savedCalibration) {
-                cameraCalibrationProfile = JSON.parse(savedCalibration);
+                const parsedCalibration = JSON.parse(savedCalibration);
+                cameraCalibrationProfile = parsedCalibration?.version === 2 ? parsedCalibration : null;
+                if (!cameraCalibrationProfile) {
+                    localStorage.removeItem('golCameraCalibrationProfile');
+                }
             }
         } catch (error) {
             cameraCalibrationProfile = null;
