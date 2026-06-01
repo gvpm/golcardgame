@@ -780,6 +780,32 @@
             display: none;
         }
 
+        .camera-tuning {
+            display: none;
+            margin-top: 12px;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .camera-tuning.ready {
+            display: block;
+        }
+
+        .camera-tuning label {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 0.82rem;
+            margin-bottom: 8px;
+        }
+
+        .camera-tuning input {
+            width: 100%;
+        }
+
         .camera-actions {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1068,6 +1094,13 @@
             <div class="camera-preview-wrap" id="camera-preview-wrap">
                 <canvas class="camera-canvas" id="camera-canvas" hidden></canvas>
             </div>
+            <div class="camera-tuning" id="camera-tuning">
+                <label for="camera-threshold-slider">
+                    <span>Ajuste fino</span>
+                    <span id="camera-threshold-value">0</span>
+                </label>
+                <input id="camera-threshold-slider" type="range" min="-100" max="100" step="1" value="0">
+            </div>
             <div class="camera-actions">
                 <button id="camera-capture">Camera</button>
                 <button id="camera-file-button">Arquivo</button>
@@ -1136,6 +1169,9 @@
         const cameraModal = document.getElementById('camera-modal');
         const cameraPreviewWrap = document.getElementById('camera-preview-wrap');
         const cameraCanvas = document.getElementById('camera-canvas');
+        const cameraTuning = document.getElementById('camera-tuning');
+        const cameraThresholdSlider = document.getElementById('camera-threshold-slider');
+        const cameraThresholdValue = document.getElementById('camera-threshold-value');
         const cameraCaptureButton = document.getElementById('camera-capture');
         const cameraCloseButton = document.getElementById('camera-close');
         const cameraFileButton = document.getElementById('camera-file-button');
@@ -1154,7 +1190,11 @@
         let analysisMode = false;
         let allowOverlappingPatterns = true;
         let pendingCameraGrid = null;
+        let pendingCameraScores = null;
+        let pendingCameraMarkerAligned = false;
+        let pendingCameraLiveCount = 0;
         let cameraCalibrationProfile = null;
+        let cameraThresholdAdjustment = 0;
         const patternColorPalette = [
             { fill: 'rgba(34, 197, 94, 0.18)', stroke: 'rgba(34, 197, 94, 0.96)', solid: '#22c55e' },
             { fill: 'rgba(59, 130, 246, 0.17)', stroke: 'rgba(59, 130, 246, 0.96)', solid: '#3b82f6' },
@@ -2142,6 +2182,7 @@
             cameraApplyButton.disabled = true;
             cameraCanvas.hidden = true;
             cameraPreviewWrap.classList.remove('ready');
+            cameraTuning.classList.remove('ready');
             cameraStatus.textContent = cameraCalibrationProfile
                 ? 'Calibracao ativa. Escolha Camera ou Arquivo para reconhecer com o perfil atual.'
                 : 'Escolha Camera ou Arquivo. Use Calibrar com um grid vazio e block 2x2 no centro.';
@@ -2151,7 +2192,9 @@
             cameraModal.classList.remove('open');
             cameraButton.classList.remove('active');
             pendingCameraGrid = null;
+            pendingCameraScores = null;
             cameraApplyButton.disabled = true;
+            cameraTuning.classList.remove('ready');
         }
 
         function captureCameraFrame() {
@@ -3365,7 +3408,18 @@
             };
         }
 
+        function getCameraAdjustmentRatio() {
+            return Math.max(-1, Math.min(1, cameraThresholdAdjustment / 100));
+        }
+
+        function updateCameraThresholdLabel() {
+            const value = Number(cameraThresholdSlider.value || 0);
+            cameraThresholdAdjustment = value;
+            cameraThresholdValue.textContent = value > 0 ? '+' + value : String(value);
+        }
+
         function classifyCameraScore(score) {
+            const adjustment = getCameraAdjustmentRatio();
             if (cameraCalibrationProfile) {
                 const feature = getCameraDarkFeature(score);
                 const emptyReference =
@@ -3373,65 +3427,83 @@
                     cameraCalibrationProfile.fallbackEmpty ||
                     { feature: cameraCalibrationProfile.emptyMedian || 0, p10: 255, median: 255, dark85: 0 };
                 const liveGap = Math.max(0.08, (cameraCalibrationProfile.liveMedian || cameraCalibrationProfile.threshold) - (cameraCalibrationProfile.emptyMedian || emptyReference.feature));
-                const relativeFeatureThreshold = emptyReference.feature + liveGap * 0.42;
-                const absoluteFeatureThreshold = cameraCalibrationProfile.threshold;
+                const relativeFeatureThreshold = emptyReference.feature + liveGap * (0.42 - adjustment * 0.22);
+                const absoluteFeatureThreshold = cameraCalibrationProfile.threshold - adjustment * 0.12;
                 const darkerThanOwnEmpty =
                     feature >= relativeFeatureThreshold ||
-                    emptyReference.p10 - score.p10 > 28 ||
-                    emptyReference.median - score.median > 36 ||
-                    score.dark85 - emptyReference.dark85 > 0.34;
+                    emptyReference.p10 - score.p10 > 28 - adjustment * 18 ||
+                    emptyReference.median - score.median > 36 - adjustment * 24 ||
+                    score.dark85 - emptyReference.dark85 > 0.34 - adjustment * 0.18;
                 const resemblesCalibratedPiece =
-                    score.p10 <= (cameraCalibrationProfile.liveP10Median + 35) ||
-                    score.median <= (cameraCalibrationProfile.liveMedianLuma + 42) ||
+                    score.p10 <= (cameraCalibrationProfile.liveP10Median + 35 + adjustment * 28) ||
+                    score.median <= (cameraCalibrationProfile.liveMedianLuma + 42 + adjustment * 36) ||
                     feature >= absoluteFeatureThreshold;
 
                 return darkerThanOwnEmpty && resemblesCalibratedPiece;
             }
 
             return (
-                (score.dark85 > 0.65 && score.median < 80) ||
-                (score.dark50 > 0.72 && score.median < 62) ||
-                (score.dark35 > 0.42 && score.dark65 > 0.68 && score.median < 72)
+                (score.dark85 > 0.65 - adjustment * 0.22 && score.median < 80 + adjustment * 34) ||
+                (score.dark50 > 0.72 - adjustment * 0.2 && score.median < 62 + adjustment * 30) ||
+                (score.dark35 > 0.42 - adjustment * 0.16 && score.dark65 > 0.68 - adjustment * 0.2 && score.median < 72 + adjustment * 32)
             );
+        }
+
+        function buildRecognizedGridFromScores(scores, markerAligned) {
+            const nextGrid = createGrid();
+            scores.forEach((score) => {
+                if (classifyCameraScore(score)) {
+                    nextGrid[score.row][score.col] = 1;
+                }
+            });
+
+            const markerRecoveredGrid = markerAligned && !cameraCalibrationProfile ? recoverMarkerPatternCells(nextGrid, scores) : nextGrid;
+            const markerCleanedGrid = markerAligned ? cleanDenseMarkerGrid(removeMarkerEdgeSingletons(markerRecoveredGrid)) : markerRecoveredGrid;
+            return cleanNoisyCameraGrid(markerCleanedGrid);
+        }
+
+        function countLiveCells(targetGrid) {
+            let liveCount = 0;
+            targetGrid.forEach((row) => {
+                row.forEach((value) => {
+                    if (value) liveCount += 1;
+                });
+            });
+            return liveCount;
+        }
+
+        function refreshCameraRecognitionPreview() {
+            if (!pendingCameraScores) return;
+            pendingCameraGrid = buildRecognizedGridFromScores(pendingCameraScores, pendingCameraMarkerAligned);
+            pendingCameraLiveCount = countLiveCells(pendingCameraGrid);
+            cameraApplyButton.disabled = false;
+            drawCameraPreview(pendingCameraScores, pendingCameraGrid);
+            cameraStatus.textContent =
+                'Preview com ' + pendingCameraLiveCount + ' celulas vivas' +
+                (cameraCalibrationProfile ? ' usando calibracao ativa.' : '.') +
+                ' Ajuste se precisar e toque OK.';
         }
 
         function analyzeGridImage(sourceCanvas) {
             const recognition = getCameraRecognitionData(sourceCanvas);
             const normalizedCanvas = recognition.normalizedCanvas;
             const scores = recognition.scores;
-
-            const nextGrid = createGrid();
-            let liveCount = 0;
-
-            scores.forEach((score) => {
-                if (classifyCameraScore(score)) {
-                    nextGrid[score.row][score.col] = 1;
-                    liveCount += 1;
-                }
-            });
-
-            const markerRecoveredGrid = normalizedCanvas.markerAligned && !cameraCalibrationProfile ? recoverMarkerPatternCells(nextGrid, scores) : nextGrid;
-            const markerCleanedGrid = normalizedCanvas.markerAligned ? cleanDenseMarkerGrid(removeMarkerEdgeSingletons(markerRecoveredGrid)) : markerRecoveredGrid;
-            const cleanedGrid = cleanNoisyCameraGrid(markerCleanedGrid);
-            liveCount = 0;
-            cleanedGrid.forEach((row) => {
-                row.forEach((value) => {
-                    if (value) liveCount += 1;
-                });
-            });
-
-            pendingCameraGrid = cleanedGrid;
-            cameraApplyButton.disabled = false;
-            drawCameraPreview(scores, cleanedGrid);
-            cameraStatus.textContent =
-                'Preview com ' + liveCount + ' celulas vivas' +
-                (cameraCalibrationProfile ? ' usando calibracao ativa.' : '.') +
-                ' Toque OK para aplicar ou tente outra foto.';
+            pendingCameraScores = scores;
+            pendingCameraMarkerAligned = Boolean(normalizedCanvas.markerAligned);
+            cameraThresholdSlider.value = String(cameraThresholdAdjustment);
+            updateCameraThresholdLabel();
+            cameraTuning.classList.add('ready');
+            refreshCameraRecognitionPreview();
         }
 
         function applyCameraGrid() {
             if (!pendingCameraGrid) return;
             grid = pendingCameraGrid.map((row) => row.slice());
+            try {
+                localStorage.setItem('golCameraThresholdAdjustment', String(cameraThresholdAdjustment));
+            } catch (error) {
+                // The current adjustment still applies to this session when storage is unavailable.
+            }
             generation = 0;
             refreshPatternOverlayIfOpen();
             drawGrid();
@@ -3611,6 +3683,12 @@
         syncPatternColors();
         const patternFamilies = createPatternFamilies();
         try {
+            const savedAdjustment = Number(localStorage.getItem('golCameraThresholdAdjustment') || 0);
+            if (Number.isFinite(savedAdjustment)) {
+                cameraThresholdAdjustment = Math.max(-100, Math.min(100, savedAdjustment));
+                cameraThresholdSlider.value = String(cameraThresholdAdjustment);
+                updateCameraThresholdLabel();
+            }
             const savedCalibration = localStorage.getItem('golCameraCalibrationProfile');
             if (savedCalibration) {
                 const parsedCalibration = JSON.parse(savedCalibration);
@@ -3736,6 +3814,10 @@
         cameraCalibrateFileButton.addEventListener('click', () => cameraCalibrationInput.click());
         cameraClearCalibrationButton.addEventListener('click', clearCameraCalibration);
         cameraApplyButton.addEventListener('click', applyCameraGrid);
+        cameraThresholdSlider.addEventListener('input', () => {
+            updateCameraThresholdLabel();
+            refreshCameraRecognitionPreview();
+        });
         cameraShotInput.addEventListener('change', (event) => {
             loadCameraFile(event.target.files[0]);
             event.target.value = '';
