@@ -3331,10 +3331,11 @@
 
         function getCameraDarkFeature(score) {
             return (
-                score.dark85 * 0.42 +
+                score.dark85 * 0.34 +
                 score.dark65 * 0.24 +
-                score.dark50 * 0.14 +
-                (255 - score.median) / 255 * 0.12 +
+                score.dark50 * 0.18 +
+                score.dark35 * 0.08 +
+                (255 - score.median) / 255 * 0.08 +
                 (255 - score.p10) / 255 * 0.08
             );
         }
@@ -3362,17 +3363,25 @@
 
             const liveFeatures = liveScores.map(getCameraDarkFeature);
             const emptyFeatures = emptyScores.map(getCameraDarkFeature);
-            const liveLow = getPercentile(liveFeatures, 0.15);
             const liveMedian = getPercentile(liveFeatures, 0.5);
+            const emptyMedian = getPercentile(emptyFeatures, 0.5);
+            const emptyP90 = getPercentile(emptyFeatures, 0.9);
+            const emptyP97 = getPercentile(emptyFeatures, 0.97);
+            const localEmptyScores = emptyScores.filter((score) =>
+                Math.abs(score.row - 6.5) <= 3 &&
+                Math.abs(score.col - 9.5) <= 4
+            );
+            const localEmptyFeatures = (localEmptyScores.length >= 12 ? localEmptyScores : emptyScores).map(getCameraDarkFeature);
+            const localEmptyMedian = getPercentile(localEmptyFeatures, 0.5);
+            const liveDelta = Math.max(0.04, liveMedian - localEmptyMedian);
+            const noiseDelta = Math.max(0.02, emptyP97 - emptyMedian);
+            const featureDeltaThreshold = Math.max(liveDelta * 0.42, noiseDelta * 1.35, 0.055);
             const liveP10Median = getPercentile(liveScores.map((score) => score.p10), 0.5);
             const liveMedianLuma = getPercentile(liveScores.map((score) => score.median), 0.5);
-            const emptyHigh = getPercentile(emptyFeatures, 0.97);
-            const emptyMedian = getPercentile(emptyFeatures, 0.5);
-            let threshold = (liveLow + emptyHigh) / 2;
-
-            if (threshold >= liveLow) {
-                threshold = liveLow * 0.88;
-            }
+            const localEmptyP10 = getPercentile((localEmptyScores.length >= 12 ? localEmptyScores : emptyScores).map((score) => score.p10), 0.5);
+            const localEmptyMedianLuma = getPercentile((localEmptyScores.length >= 12 ? localEmptyScores : emptyScores).map((score) => score.median), 0.5);
+            const p10Drop = Math.max(12, localEmptyP10 - liveP10Median);
+            const medianDrop = Math.max(16, localEmptyMedianLuma - liveMedianLuma);
 
             const emptyByCell = {};
             const fallbackEmpty = {
@@ -3392,18 +3401,22 @@
             });
 
             return {
-                version: 2,
-                threshold,
+                version: 3,
+                featureDeltaThreshold,
+                p10DropThreshold: Math.max(8, p10Drop * 0.36),
+                medianDropThreshold: Math.max(10, medianDrop * 0.36),
+                dark85DeltaThreshold: 0.22,
                 liveMedian,
-                liveLow,
                 liveP10Median,
                 liveMedianLuma,
-                emptyHigh,
                 emptyMedian,
+                emptyP90,
+                emptyP97,
+                localEmptyMedian,
+                liveDelta,
+                noiseDelta,
                 emptyByCell,
                 fallbackEmpty,
-                liveP10Max: Math.max(...liveScores.map((score) => score.p10)) + 14,
-                liveMedianMax: Math.max(...liveScores.map((score) => score.median)) + 26,
                 createdAt: Date.now()
             };
         }
@@ -3426,20 +3439,19 @@
                     cameraCalibrationProfile.emptyByCell?.[getScoreCellKey(score)] ||
                     cameraCalibrationProfile.fallbackEmpty ||
                     { feature: cameraCalibrationProfile.emptyMedian || 0, p10: 255, median: 255, dark85: 0 };
-                const liveGap = Math.max(0.08, (cameraCalibrationProfile.liveMedian || cameraCalibrationProfile.threshold) - (cameraCalibrationProfile.emptyMedian || emptyReference.feature));
-                const relativeFeatureThreshold = emptyReference.feature + liveGap * (0.42 - adjustment * 0.22);
-                const absoluteFeatureThreshold = cameraCalibrationProfile.threshold - adjustment * 0.12;
-                const darkerThanOwnEmpty =
-                    feature >= relativeFeatureThreshold ||
-                    emptyReference.p10 - score.p10 > 28 - adjustment * 18 ||
-                    emptyReference.median - score.median > 36 - adjustment * 24 ||
-                    score.dark85 - emptyReference.dark85 > 0.34 - adjustment * 0.18;
-                const resemblesCalibratedPiece =
-                    score.p10 <= (cameraCalibrationProfile.liveP10Median + 35 + adjustment * 28) ||
-                    score.median <= (cameraCalibrationProfile.liveMedianLuma + 42 + adjustment * 36) ||
-                    feature >= absoluteFeatureThreshold;
+                const featureDelta = feature - emptyReference.feature;
+                const p10Drop = emptyReference.p10 - score.p10;
+                const medianDrop = emptyReference.median - score.median;
+                const dark85Delta = score.dark85 - emptyReference.dark85;
+                const sensitivity = 1 - adjustment * 0.38;
+                const featurePass = featureDelta >= cameraCalibrationProfile.featureDeltaThreshold * sensitivity;
+                const p10Pass = p10Drop >= cameraCalibrationProfile.p10DropThreshold * sensitivity;
+                const medianPass = medianDrop >= cameraCalibrationProfile.medianDropThreshold * sensitivity;
+                const darkPass = dark85Delta >= cameraCalibrationProfile.dark85DeltaThreshold * sensitivity;
+                const blackEvidence = score.dark50 > 0.18 + Math.max(0, -adjustment) * 0.06 || score.p10 < 82 + adjustment * 18;
+                const votes = [featurePass, p10Pass, medianPass, darkPass].filter(Boolean).length;
 
-                return darkerThanOwnEmpty && resemblesCalibratedPiece;
+                return votes >= 2 && blackEvidence;
             }
 
             return (
@@ -3456,6 +3468,10 @@
                     nextGrid[score.row][score.col] = 1;
                 }
             });
+
+            if (cameraCalibrationProfile) {
+                return nextGrid;
+            }
 
             const markerRecoveredGrid = markerAligned && !cameraCalibrationProfile ? recoverMarkerPatternCells(nextGrid, scores) : nextGrid;
             const markerCleanedGrid = markerAligned ? cleanDenseMarkerGrid(removeMarkerEdgeSingletons(markerRecoveredGrid)) : markerRecoveredGrid;
@@ -3692,7 +3708,7 @@
             const savedCalibration = localStorage.getItem('golCameraCalibrationProfile');
             if (savedCalibration) {
                 const parsedCalibration = JSON.parse(savedCalibration);
-                cameraCalibrationProfile = parsedCalibration?.version === 2 ? parsedCalibration : null;
+                cameraCalibrationProfile = parsedCalibration?.version === 3 ? parsedCalibration : null;
                 if (!cameraCalibrationProfile) {
                     localStorage.removeItem('golCameraCalibrationProfile');
                 }
