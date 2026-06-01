@@ -1071,11 +1071,14 @@
             <div class="camera-actions">
                 <button id="camera-capture">Camera</button>
                 <button id="camera-file-button">Arquivo</button>
+                <button id="camera-calibrate-button">Calibrar</button>
+                <button id="camera-clear-calibration">Reset calib.</button>
                 <button class="camera-apply" id="camera-apply" disabled>OK</button>
             </div>
             <p class="camera-status" id="camera-status">Escolha uma foto do grid 20 x 14.</p>
             <input id="camera-shot-file" type="file" accept="image/*" capture="environment" hidden>
             <input id="camera-file" type="file" accept="image/*" hidden>
+            <input id="camera-calibration-file" type="file" accept="image/*" hidden>
         </div>
     </div>
 
@@ -1134,8 +1137,11 @@
         const cameraCaptureButton = document.getElementById('camera-capture');
         const cameraCloseButton = document.getElementById('camera-close');
         const cameraFileButton = document.getElementById('camera-file-button');
+        const cameraCalibrateButton = document.getElementById('camera-calibrate-button');
+        const cameraClearCalibrationButton = document.getElementById('camera-clear-calibration');
         const cameraShotInput = document.getElementById('camera-shot-file');
         const cameraFileInput = document.getElementById('camera-file');
+        const cameraCalibrationInput = document.getElementById('camera-calibration-file');
         const cameraApplyButton = document.getElementById('camera-apply');
         const cameraStatus = document.getElementById('camera-status');
         let longPressTimer = null;
@@ -1144,6 +1150,7 @@
         let analysisMode = false;
         let allowOverlappingPatterns = true;
         let pendingCameraGrid = null;
+        let cameraCalibrationProfile = null;
         const patternColorPalette = [
             { fill: 'rgba(34, 197, 94, 0.18)', stroke: 'rgba(34, 197, 94, 0.96)', solid: '#22c55e' },
             { fill: 'rgba(59, 130, 246, 0.17)', stroke: 'rgba(59, 130, 246, 0.96)', solid: '#3b82f6' },
@@ -2131,7 +2138,9 @@
             cameraApplyButton.disabled = true;
             cameraCanvas.hidden = true;
             cameraPreviewWrap.classList.remove('ready');
-            cameraStatus.textContent = 'Escolha Camera para tirar uma foto ou Arquivo para usar uma imagem.';
+            cameraStatus.textContent = cameraCalibrationProfile
+                ? 'Calibracao ativa. Escolha Camera ou Arquivo para reconhecer com o perfil atual.'
+                : 'Escolha Camera ou Arquivo. Use Calibrar com um grid vazio e block 2x2 no centro.';
         }
 
         function closeCameraPanel() {
@@ -2160,9 +2169,317 @@
             image.src = URL.createObjectURL(file);
         }
 
+        function loadCameraCalibrationFile(file) {
+            if (!file) return;
+
+            const image = new Image();
+            image.onload = () => {
+                URL.revokeObjectURL(image.src);
+                const capture = document.createElement('canvas');
+                capture.width = image.naturalWidth;
+                capture.height = image.naturalHeight;
+                capture.getContext('2d').drawImage(image, 0, 0);
+                calibrateCameraRecognition(capture);
+            };
+            image.src = URL.createObjectURL(file);
+        }
+
+        function calibrateCameraRecognition(sourceCanvas) {
+            const recognition = getCameraRecognitionData(sourceCanvas);
+            const profile = buildCameraCalibrationProfile(recognition.scores);
+            if (!profile) {
+                cameraStatus.textContent = 'Nao foi possivel calibrar. Use uma foto do grid vazio com um block 2x2 exatamente no centro.';
+                return;
+            }
+
+            cameraCalibrationProfile = profile;
+            try {
+                localStorage.setItem('golCameraCalibrationProfile', JSON.stringify(profile));
+            } catch (error) {
+                // Calibration still works in memory when storage is unavailable.
+            }
+            cameraStatus.textContent = 'Calibracao ativa. Agora use Camera ou Arquivo para reconhecer o grid neste ambiente.';
+            cameraCanvas.hidden = true;
+            cameraPreviewWrap.classList.remove('ready');
+            pendingCameraGrid = null;
+            cameraApplyButton.disabled = true;
+        }
+
+        function clearCameraCalibration() {
+            cameraCalibrationProfile = null;
+            try {
+                localStorage.removeItem('golCameraCalibrationProfile');
+            } catch (error) {
+                // Nothing to clear if storage is unavailable.
+            }
+            cameraStatus.textContent = 'Calibracao removida. O reconhecimento voltou ao modo padrao.';
+        }
+
         function getImageLuma(data, width, x, y) {
             const index = (y * width + x) * 4;
             return 0.299 * data[index] + 0.587 * data[index + 1] + 0.114 * data[index + 2];
+        }
+
+        function getConvexHull(points) {
+            const sorted = points.slice().sort((a, b) => a.cx === b.cx ? a.cy - b.cy : a.cx - b.cx);
+            if (sorted.length <= 1) return sorted;
+
+            const cross = (origin, a, b) =>
+                (a.cx - origin.cx) * (b.cy - origin.cy) - (a.cy - origin.cy) * (b.cx - origin.cx);
+            const lower = [];
+            sorted.forEach((point) => {
+                while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+                    lower.pop();
+                }
+                lower.push(point);
+            });
+
+            const upper = [];
+            for (let i = sorted.length - 1; i >= 0; i--) {
+                const point = sorted[i];
+                while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+                    upper.pop();
+                }
+                upper.push(point);
+            }
+
+            lower.pop();
+            upper.pop();
+            return lower.concat(upper);
+        }
+
+        function getQuadArea(points) {
+            let area = 0;
+            for (let i = 0; i < points.length; i++) {
+                const current = points[i];
+                const next = points[(i + 1) % points.length];
+                area += current.cx * next.cy - next.cx * current.cy;
+            }
+            return Math.abs(area) / 2;
+        }
+
+        function scoreMarkerQuad(markers, imageWidth, imageHeight) {
+            const centerX = markers.reduce((sum, marker) => sum + marker.cx, 0) / markers.length;
+            const centerY = markers.reduce((sum, marker) => sum + marker.cy, 0) / markers.length;
+            const ordered = markers.slice().sort((a, b) =>
+                Math.atan2(a.cy - centerY, a.cx - centerX) - Math.atan2(b.cy - centerY, b.cx - centerX)
+            );
+            const sides = ordered.map((marker, index) => {
+                const next = ordered[(index + 1) % ordered.length];
+                return Math.hypot(next.cx - marker.cx, next.cy - marker.cy);
+            });
+            const longA = (sides[0] + sides[2]) / 2;
+            const longB = (sides[1] + sides[3]) / 2;
+            const longSide = Math.max(longA, longB);
+            const shortSide = Math.min(longA, longB);
+            const aspect = longSide / Math.max(1, shortSide);
+            const expectedAspect = 219.4 / 169.6;
+            const aspectError = Math.abs(aspect - expectedAspect);
+            const oppositeError =
+                Math.abs(sides[0] - sides[2]) / Math.max(1, longA) +
+                Math.abs(sides[1] - sides[3]) / Math.max(1, longB);
+            const areaScore = getQuadArea(ordered) / Math.max(1, imageWidth * imageHeight);
+
+            if (aspect < 1.05 || aspect > 1.65) return null;
+            return {
+                score: areaScore - aspectError * 0.08 - oppositeError * 0.04,
+                ordered
+            };
+        }
+
+        function getCombinations(items, size) {
+            const result = [];
+            const current = [];
+            const walk = (start) => {
+                if (current.length === size) {
+                    result.push(current.slice());
+                    return;
+                }
+                for (let i = start; i <= items.length - (size - current.length); i++) {
+                    current.push(items[i]);
+                    walk(i + 1);
+                    current.pop();
+                }
+            };
+            walk(0);
+            return result;
+        }
+
+        function orderPointsAroundCenter(points) {
+            const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+            const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+            return points.slice().sort((a, b) =>
+                Math.atan2(a.y - centerY, a.x - centerX) - Math.atan2(b.y - centerY, b.x - centerX)
+            );
+        }
+
+        function rotatePointsToLandscape(points) {
+            const sideLength = (index) => {
+                const current = points[index];
+                const next = points[(index + 1) % points.length];
+                return Math.hypot(next.x - current.x, next.y - current.y);
+            };
+            const sides = points.map((_, index) => sideLength(index));
+            const firstLongSide = sides[0] + sides[2] >= sides[1] + sides[3] ? 0 : 1;
+            const rotated = points.slice(firstLongSide).concat(points.slice(0, firstLongSide));
+            const topSideY = (rotated[0].y + rotated[1].y) / 2;
+            const bottomSideY = (rotated[2].y + rotated[3].y) / 2;
+            const landscape = topSideY <= bottomSideY ? rotated : [rotated[2], rotated[3], rotated[0], rotated[1]];
+            return getQuadArea(landscape.map((point) => ({ cx: point.x, cy: point.y }))) > 0
+                ? landscape
+                : [landscape[0], landscape[3], landscape[2], landscape[1]];
+        }
+
+        function collectMarkerComponents(imageData, width, height, options) {
+            const data = imageData.data;
+            const scaledWidth = Math.min(360, width);
+            const scaledHeight = Math.max(1, Math.round(height * scaledWidth / width));
+            const mask = new Uint8Array(scaledWidth * scaledHeight);
+            const visited = new Uint8Array(mask.length);
+
+            for (let sy = 0; sy < scaledHeight; sy++) {
+                const y = Math.min(height - 1, Math.floor((sy + 0.5) * height / scaledHeight));
+                for (let sx = 0; sx < scaledWidth; sx++) {
+                    const x = Math.min(width - 1, Math.floor((sx + 0.5) * width / scaledWidth));
+                    const index = (y * width + x) * 4;
+                    const r = data[index];
+                    const g = data[index + 1];
+                    const b = data[index + 2];
+                    const max = Math.max(r, g, b);
+                    const min = Math.min(r, g, b);
+                    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+                    mask[sy * scaledWidth + sx] = luma > options.lumaThreshold && max - min < options.colorSpread ? 1 : 0;
+                }
+            }
+
+            const queueX = [];
+            const queueY = [];
+            const components = [];
+
+            for (let sy = 0; sy < scaledHeight; sy++) {
+                for (let sx = 0; sx < scaledWidth; sx++) {
+                    const startIndex = sy * scaledWidth + sx;
+                    if (!mask[startIndex] || visited[startIndex]) continue;
+
+                    let head = 0;
+                    let area = 0;
+                    let minX = sx;
+                    let maxX = sx;
+                    let minY = sy;
+                    let maxY = sy;
+                    queueX.length = 0;
+                    queueY.length = 0;
+                    queueX.push(sx);
+                    queueY.push(sy);
+                    visited[startIndex] = 1;
+
+                    while (head < queueX.length) {
+                        const x = queueX[head];
+                        const y = queueY[head];
+                        head += 1;
+                        area += 1;
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                        minY = Math.min(minY, y);
+                        maxY = Math.max(maxY, y);
+
+                        const neighbors = [
+                            [x + 1, y],
+                            [x - 1, y],
+                            [x, y + 1],
+                            [x, y - 1]
+                        ];
+                        neighbors.forEach(([nextX, nextY]) => {
+                            if (nextX < 0 || nextX >= scaledWidth || nextY < 0 || nextY >= scaledHeight) return;
+                            const nextIndex = nextY * scaledWidth + nextX;
+                            if (!mask[nextIndex] || visited[nextIndex]) return;
+                            visited[nextIndex] = 1;
+                            queueX.push(nextX);
+                            queueY.push(nextY);
+                        });
+                    }
+
+                    const componentWidth = maxX - minX + 1;
+                    const componentHeight = maxY - minY + 1;
+                    const ratio = componentWidth / componentHeight;
+                    const density = area / Math.max(1, componentWidth * componentHeight);
+                    const touchesImageEdge = minX <= 1 || minY <= 1 || maxX >= scaledWidth - 2 || maxY >= scaledHeight - 2;
+
+                    if (
+                        area > options.minArea &&
+                        ratio > options.minRatio &&
+                        ratio < options.maxRatio &&
+                        density > options.minDensity &&
+                        (!touchesImageEdge || area < options.maxEdgeArea) &&
+                        componentWidth > scaledWidth * options.minSizeRatio &&
+                        componentHeight > scaledHeight * options.minSizeRatio &&
+                        componentWidth < scaledWidth * options.maxSizeRatio &&
+                        componentHeight < scaledHeight * options.maxSizeRatio
+                    ) {
+                        components.push({
+                            area,
+                            minX,
+                            maxX,
+                            minY,
+                            maxY,
+                            centerX: (minX + maxX) / 2,
+                            centerY: (minY + maxY) / 2
+                        });
+                    }
+                }
+            }
+
+            const scale = width / scaledWidth;
+            return components.map((component) => ({
+                area: component.area,
+                minX: component.minX * scale,
+                maxX: (component.maxX + 1) * scale,
+                minY: component.minY * scale,
+                maxY: (component.maxY + 1) * scale,
+                cx: component.centerX * scale,
+                cy: component.centerY * scale
+            }));
+        }
+
+        function detectLMarkerBoardCorners(imageData, width, height) {
+            const strictComponents = collectMarkerComponents(imageData, width, height, {
+                lumaThreshold: 175,
+                colorSpread: 80,
+                minArea: 120,
+                minRatio: 0.65,
+                maxRatio: 1.45,
+                minDensity: 0.38,
+                maxEdgeArea: 900,
+                minSizeRatio: 0.025,
+                maxSizeRatio: 0.18
+            });
+            const looseComponents = collectMarkerComponents(imageData, width, height, {
+                lumaThreshold: 160,
+                colorSpread: 120,
+                minArea: 120,
+                minRatio: 0.5,
+                maxRatio: 1.65,
+                minDensity: 0.28,
+                maxEdgeArea: 450,
+                minSizeRatio: 0.025,
+                maxSizeRatio: 0.22
+            });
+            const scaledComponents = looseComponents.length >= 4 ? looseComponents : strictComponents;
+            if (scaledComponents.length < 4) return null;
+            const hull = getConvexHull(scaledComponents);
+            const pool = hull.length >= 4 ? hull : scaledComponents;
+            let best = null;
+
+            getCombinations(pool, 4).forEach((combination) => {
+                const candidate = scoreMarkerQuad(combination, width, height);
+                if (candidate && (!best || candidate.score > best.score)) {
+                    best = candidate;
+                }
+            });
+
+            if (!best) return null;
+
+            return rotatePointsToLandscape(orderPointsAroundCenter(best.ordered.map((marker) => ({ x: marker.cx, y: marker.cy }))));
         }
 
         function detectOuterBoardBounds(imageData, width, height) {
@@ -2315,17 +2632,161 @@
             };
         }
 
+        function solveLinearSystem(matrix, values) {
+            const size = values.length;
+            const augmented = matrix.map((row, index) => row.concat(values[index]));
+
+            for (let col = 0; col < size; col++) {
+                let pivot = col;
+                for (let row = col + 1; row < size; row++) {
+                    if (Math.abs(augmented[row][col]) > Math.abs(augmented[pivot][col])) {
+                        pivot = row;
+                    }
+                }
+
+                if (Math.abs(augmented[pivot][col]) < 1e-9) return null;
+                [augmented[col], augmented[pivot]] = [augmented[pivot], augmented[col]];
+
+                const pivotValue = augmented[col][col];
+                for (let cell = col; cell <= size; cell++) {
+                    augmented[col][cell] /= pivotValue;
+                }
+
+                for (let row = 0; row < size; row++) {
+                    if (row === col) continue;
+                    const factor = augmented[row][col];
+                    for (let cell = col; cell <= size; cell++) {
+                        augmented[row][cell] -= factor * augmented[col][cell];
+                    }
+                }
+            }
+
+            return augmented.map((row) => row[size]);
+        }
+
+        function getPerspectiveMatrix(fromPoints, toPoints) {
+            const matrix = [];
+            const values = [];
+
+            for (let i = 0; i < 4; i++) {
+                const { x, y } = fromPoints[i];
+                const u = toPoints[i].x;
+                const v = toPoints[i].y;
+                matrix.push([x, y, 1, 0, 0, 0, -u * x, -u * y]);
+                values.push(u);
+                matrix.push([0, 0, 0, x, y, 1, -v * x, -v * y]);
+                values.push(v);
+            }
+
+            const solution = solveLinearSystem(matrix, values);
+            return solution ? solution.concat(1) : null;
+        }
+
+        function projectPoint(matrix, x, y) {
+            const denominator = matrix[6] * x + matrix[7] * y + matrix[8];
+            if (Math.abs(denominator) < 1e-9) return null;
+            return {
+                x: (matrix[0] * x + matrix[1] * y + matrix[2]) / denominator,
+                y: (matrix[3] * x + matrix[4] * y + matrix[5]) / denominator
+            };
+        }
+
+        function sampleImageDataBilinear(imageData, x, y) {
+            const width = imageData.width;
+            const height = imageData.height;
+            if (x < 0 || x >= width - 1 || y < 0 || y >= height - 1) {
+                return [255, 255, 255, 255];
+            }
+
+            const x0 = Math.floor(x);
+            const y0 = Math.floor(y);
+            const x1 = x0 + 1;
+            const y1 = y0 + 1;
+            const dx = x - x0;
+            const dy = y - y0;
+            const data = imageData.data;
+            const out = [0, 0, 0, 0];
+            const addWeighted = (px, py, weight) => {
+                const index = (py * width + px) * 4;
+                out[0] += data[index] * weight;
+                out[1] += data[index + 1] * weight;
+                out[2] += data[index + 2] * weight;
+                out[3] += data[index + 3] * weight;
+            };
+
+            addWeighted(x0, y0, (1 - dx) * (1 - dy));
+            addWeighted(x1, y0, dx * (1 - dy));
+            addWeighted(x0, y1, (1 - dx) * dy);
+            addWeighted(x1, y1, dx * dy);
+            return out;
+        }
+
+        function normalizeBoardCanvasWithMarkers(sourceCanvas, markerCorners) {
+            const boardWidthMm = 219.4;
+            const boardHeightMm = 169.6;
+            const borderMm = 20;
+            const markerCenterMm = 8.5;
+            const gridWidthMm = 179.4;
+            const gridHeightMm = 129.6;
+            const mmScale = 5;
+            const outputWidth = Math.round(boardWidthMm * mmScale);
+            const outputHeight = Math.round(boardHeightMm * mmScale);
+            const destinationCorners = [
+                { x: markerCenterMm * mmScale, y: markerCenterMm * mmScale },
+                { x: (boardWidthMm - markerCenterMm) * mmScale, y: markerCenterMm * mmScale },
+                { x: (boardWidthMm - markerCenterMm) * mmScale, y: (boardHeightMm - markerCenterMm) * mmScale },
+                { x: markerCenterMm * mmScale, y: (boardHeightMm - markerCenterMm) * mmScale }
+            ];
+            const matrix = getPerspectiveMatrix(destinationCorners, markerCorners);
+            if (!matrix) return null;
+
+            const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+            const sourceData = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+            const normalizedCanvas = document.createElement('canvas');
+            normalizedCanvas.width = outputWidth;
+            normalizedCanvas.height = outputHeight;
+            const normalizedCtx = normalizedCanvas.getContext('2d');
+            const normalizedData = normalizedCtx.createImageData(outputWidth, outputHeight);
+
+            for (let y = 0; y < outputHeight; y++) {
+                for (let x = 0; x < outputWidth; x++) {
+                    const point = projectPoint(matrix, x, y);
+                    const sample = point ? sampleImageDataBilinear(sourceData, point.x, point.y) : [255, 255, 255, 255];
+                    const index = (y * outputWidth + x) * 4;
+                    normalizedData.data[index] = sample[0];
+                    normalizedData.data[index + 1] = sample[1];
+                    normalizedData.data[index + 2] = sample[2];
+                    normalizedData.data[index + 3] = sample[3];
+                }
+            }
+
+            normalizedCtx.putImageData(normalizedData, 0, 0);
+            normalizedCanvas.markerAligned = true;
+            normalizedCanvas.markerGridBounds = {
+                left: borderMm * mmScale,
+                top: borderMm * mmScale,
+                right: (borderMm + gridWidthMm) * mmScale,
+                bottom: (borderMm + gridHeightMm) * mmScale
+            };
+            return normalizedCanvas;
+        }
+
         function normalizeBoardCanvas(sourceCanvas) {
             const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
             const sourceData = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
-            const orientation = detectOuterBoardBounds(sourceData, sourceCanvas.width, sourceCanvas.height);
+            const markerCorners = detectLMarkerBoardCorners(sourceData, sourceCanvas.width, sourceCanvas.height);
+            const markerCanvas = markerCorners ? normalizeBoardCanvasWithMarkers(sourceCanvas, markerCorners) : null;
+            if (markerCanvas) return markerCanvas;
+
+            const markerOrientation = null;
+            const orientation = markerOrientation || detectOuterBoardBounds(sourceData, sourceCanvas.width, sourceCanvas.height);
             const angle = orientation.angleRadians || 0;
 
             if (!Number.isFinite(orientation.minU) || !Number.isFinite(orientation.maxU) || !Number.isFinite(orientation.minV) || !Number.isFinite(orientation.maxV)) {
                 return sourceCanvas;
             }
 
-            if (Math.abs(angle) < 0.035 && sourceCanvas.width >= sourceCanvas.height) {
+            if (!markerOrientation && Math.abs(angle) < 0.035 && sourceCanvas.width >= sourceCanvas.height) {
                 return sourceCanvas;
             }
 
@@ -2344,8 +2805,180 @@
             ctx.setTransform(cos, -sin, sin, cos, -orientation.minU + padding, -orientation.minV + padding);
             ctx.drawImage(sourceCanvas, 0, 0);
             ctx.setTransform(1, 0, 0, 1, 0, 0);
-
+            normalizedCanvas.markerAligned = Boolean(markerOrientation);
             return normalizedCanvas;
+        }
+
+        function removeMarkerEdgeSingletons(candidateGrid) {
+            const cleanedGrid = candidateGrid.map((row) => row.slice());
+            const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+            const directions = [
+                [1, 0],
+                [-1, 0],
+                [0, 1],
+                [0, -1]
+            ];
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    if (!candidateGrid[row][col] || visited[row][col]) continue;
+
+                    const queue = [[row, col]];
+                    const component = [];
+                    let head = 0;
+                    let touchesEdge = false;
+                    visited[row][col] = true;
+
+                    while (head < queue.length) {
+                        const [currentRow, currentCol] = queue[head];
+                        head += 1;
+                        component.push([currentRow, currentCol]);
+                        touchesEdge =
+                            touchesEdge ||
+                            currentRow === 0 ||
+                            currentCol === 0 ||
+                            currentRow === ROWS - 1 ||
+                            currentCol === COLS - 1;
+
+                        directions.forEach(([rowDelta, colDelta]) => {
+                            const nextRow = currentRow + rowDelta;
+                            const nextCol = currentCol + colDelta;
+                            if (nextRow < 0 || nextRow >= ROWS || nextCol < 0 || nextCol >= COLS) return;
+                            if (!candidateGrid[nextRow][nextCol] || visited[nextRow][nextCol]) return;
+                            visited[nextRow][nextCol] = true;
+                            queue.push([nextRow, nextCol]);
+                        });
+                    }
+
+                    if (touchesEdge && component.length === 1) {
+                        component.forEach(([componentRow, componentCol]) => {
+                            cleanedGrid[componentRow][componentCol] = 0;
+                        });
+                    }
+                }
+            }
+
+            return cleanedGrid;
+        }
+
+        function cleanDenseMarkerGrid(candidateGrid) {
+            const liveCells = [];
+            candidateGrid.forEach((row, rowIndex) => {
+                row.forEach((value, colIndex) => {
+                    if (value) liveCells.push([rowIndex, colIndex]);
+                });
+            });
+
+            if (liveCells.length <= 32) {
+                return candidateGrid;
+            }
+
+            const cleanedGrid = createGrid();
+            const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+            const directions = [
+                [1, 0],
+                [-1, 0],
+                [0, 1],
+                [0, -1]
+            ];
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    if (!candidateGrid[row][col] || visited[row][col]) continue;
+
+                    const queue = [[row, col]];
+                    const component = [];
+                    let head = 0;
+                    let touchesEdge = false;
+                    visited[row][col] = true;
+
+                    while (head < queue.length) {
+                        const [currentRow, currentCol] = queue[head];
+                        head += 1;
+                        component.push([currentRow, currentCol]);
+                        touchesEdge =
+                            touchesEdge ||
+                            currentRow === 0 ||
+                            currentCol === 0 ||
+                            currentRow === ROWS - 1 ||
+                            currentCol === COLS - 1;
+
+                        directions.forEach(([rowDelta, colDelta]) => {
+                            const nextRow = currentRow + rowDelta;
+                            const nextCol = currentCol + colDelta;
+                            if (nextRow < 0 || nextRow >= ROWS || nextCol < 0 || nextCol >= COLS) return;
+                            if (!candidateGrid[nextRow][nextCol] || visited[nextRow][nextCol]) return;
+                            visited[nextRow][nextCol] = true;
+                            queue.push([nextRow, nextCol]);
+                        });
+                    }
+
+                    const plausibleSize = touchesEdge ? component.length <= 8 : component.length <= 12;
+                    if (plausibleSize) {
+                        component.forEach(([componentRow, componentCol]) => {
+                            cleanedGrid[componentRow][componentCol] = 1;
+                        });
+                    }
+                }
+            }
+
+            return cleanedGrid;
+        }
+
+        function recoverMarkerPatternCells(candidateGrid, scores) {
+            const recoveredGrid = candidateGrid.map((row) => row.slice());
+            const scoreByCell = new Map(scores.map((score) => [score.row + ',' + score.col, score]));
+            const gliderVariants = [
+                [[0, 1], [1, 2], [2, 0], [2, 1], [2, 2]],
+                [[0, 0], [1, 0], [2, 0], [2, 1], [1, 2]],
+                [[0, 0], [0, 1], [0, 2], [1, 0], [2, 1]],
+                [[0, 1], [1, 0], [1, 2], [2, 2], [0, 2]],
+                [[0, 1], [1, 0], [2, 0], [2, 1], [2, 2]],
+                [[0, 0], [0, 1], [1, 1], [2, 0], [2, 1]],
+                [[0, 0], [0, 1], [0, 2], [1, 2], [2, 1]],
+                [[0, 1], [1, 0], [1, 2], [2, 0], [2, 1]]
+            ];
+
+            for (let startRow = 0; startRow <= ROWS - 3; startRow++) {
+                for (let startCol = 0; startCol <= COLS - 3; startCol++) {
+                    gliderVariants.forEach((variant) => {
+                        const expected = new Set(variant.map(([row, col]) => (startRow + row) + ',' + (startCol + col)));
+                        let present = 0;
+                        const missing = [];
+                        let extra = 0;
+
+                        for (let row = startRow; row < startRow + 3; row++) {
+                            for (let col = startCol; col < startCol + 3; col++) {
+                                const key = row + ',' + col;
+                                if (expected.has(key)) {
+                                    if (recoveredGrid[row][col]) {
+                                        present += 1;
+                                    } else {
+                                        missing.push([row, col]);
+                                    }
+                                } else if (recoveredGrid[row][col]) {
+                                    extra += 1;
+                                }
+                            }
+                        }
+
+                        if (present !== 4 || missing.length !== 1 || extra > 1) return;
+
+                        const [missingRow, missingCol] = missing[0];
+                        const score = scoreByCell.get(missingRow + ',' + missingCol);
+                        const nearLive = score && (
+                            (score.dark85 > 0.42 && score.p10 < 75) ||
+                            (score.dark65 > 0.34 && score.dark85 > 0.38 && score.p10 < 65)
+                        );
+
+                        if (nearLive) {
+                            recoveredGrid[missingRow][missingCol] = 1;
+                        }
+                    });
+                }
+            }
+
+            return recoveredGrid;
         }
 
         function cleanNoisyCameraGrid(candidateGrid) {
@@ -2492,20 +3125,106 @@
             };
         }
 
-        function analyzeGridImage(sourceCanvas) {
+        function detectMarkerGridBounds(imageData, width, height) {
+            const data = imageData.data;
+            const brightThreshold = 155;
+            const minBandY = Math.max(0, Math.floor(height * 0.15));
+            const maxBandY = Math.min(height - 1, Math.ceil(height * 0.85));
+            const colBright = Array(width).fill(0);
+            const bandHeight = Math.max(1, maxBandY - minBandY + 1);
+
+            for (let y = minBandY; y <= maxBandY; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (getImageLuma(data, width, x, y) > brightThreshold) {
+                        colBright[x] += 1;
+                    }
+                }
+            }
+
+            for (let x = 0; x < width; x++) {
+                colBright[x] /= bandHeight;
+            }
+
+            const colProfile = smoothProfile(colBright, Math.max(7, Math.round(width * 0.012)));
+            const colThreshold = 0.25;
+            let gridLeft = null;
+            let gridRight = null;
+
+            for (let x = 0; x < width; x++) {
+                if (colProfile[x] > colThreshold) {
+                    if (gridLeft === null) gridLeft = x;
+                    gridRight = x;
+                }
+            }
+
+            if (gridLeft === null || gridRight === null || gridRight - gridLeft < width * 0.45) {
+                return null;
+            }
+
+            const gridWidth = gridRight - gridLeft + 1;
+            const rowBright = Array(height).fill(0);
+
+            for (let y = 0; y < height; y++) {
+                let brightCount = 0;
+                for (let x = gridLeft; x <= gridRight; x++) {
+                    if (getImageLuma(data, width, x, y) > brightThreshold) {
+                        brightCount += 1;
+                    }
+                }
+                rowBright[y] = brightCount / gridWidth;
+            }
+
+            const rowProfile = smoothProfile(rowBright, Math.max(7, Math.round(height * 0.012)));
+            const rowThreshold = 0.25;
+            let gridTop = null;
+            let gridBottom = null;
+
+            for (let y = 0; y < height; y++) {
+                if (rowProfile[y] > rowThreshold) {
+                    if (gridTop === null) gridTop = y;
+                    gridBottom = y;
+                }
+            }
+
+            if (gridTop === null || gridBottom === null) {
+                return null;
+            }
+
+            const expectedGridHeight = gridWidth * ROWS / COLS;
+            if (expectedGridHeight < height * 0.35 || expectedGridHeight > height * 0.9) {
+                return null;
+            }
+
+            const centeredTop = Math.max(0, Math.min(height - expectedGridHeight, gridTop));
+
+            return {
+                left: gridLeft,
+                top: centeredTop,
+                right: gridRight + 1,
+                bottom: centeredTop + expectedGridHeight
+            };
+        }
+
+        function ensureCameraGridResolution() {
             if (ROWS !== 14 || COLS !== 20) {
                 ROWS = 14;
                 COLS = 20;
                 updateSizeLabel();
                 resizeCanvas();
             }
+        }
 
+        function getCameraRecognitionData(sourceCanvas) {
+            ensureCameraGridResolution();
             const normalizedCanvas = normalizeBoardCanvas(sourceCanvas);
             const sourceCtx = normalizedCanvas.getContext('2d', { willReadFrequently: true });
             const width = normalizedCanvas.width;
             const height = normalizedCanvas.height;
             const imageData = sourceCtx.getImageData(0, 0, width, height);
-            const bounds = detectGridBounds(imageData, width, height, detectOuterBoardBounds(imageData, width, height));
+            const fallbackBounds = () => detectGridBounds(imageData, width, height, detectOuterBoardBounds(imageData, width, height));
+            const bounds = normalizedCanvas.markerAligned
+                ? (normalizedCanvas.markerGridBounds || detectMarkerGridBounds(imageData, width, height) || fallbackBounds())
+                : fallbackBounds();
             const boardWidth = Math.max(1, bounds.right - bounds.left);
             const boardHeight = Math.max(1, bounds.bottom - bounds.top);
             const scores = [];
@@ -2557,21 +3276,97 @@
                 }
             }
 
+            return {
+                normalizedCanvas,
+                scores
+            };
+        }
+
+        function getCameraDarkFeature(score) {
+            return (
+                score.dark85 * 0.42 +
+                score.dark65 * 0.24 +
+                score.dark50 * 0.14 +
+                (255 - score.median) / 255 * 0.12 +
+                (255 - score.p10) / 255 * 0.08
+            );
+        }
+
+        function getPercentile(values, percentile) {
+            if (!values.length) return 0;
+            const sorted = values.slice().sort((a, b) => a - b);
+            const index = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * percentile)));
+            return sorted[index];
+        }
+
+        function getCalibrationBlockCells() {
+            return new Set(['6,9', '6,10', '7,9', '7,10']);
+        }
+
+        function buildCameraCalibrationProfile(scores) {
+            const blockCells = getCalibrationBlockCells();
+            const liveScores = scores.filter((score) => blockCells.has(score.row + ',' + score.col));
+            const emptyScores = scores.filter((score) => !blockCells.has(score.row + ',' + score.col));
+            if (liveScores.length !== 4 || emptyScores.length < 200) return null;
+
+            const liveFeatures = liveScores.map(getCameraDarkFeature);
+            const emptyFeatures = emptyScores.map(getCameraDarkFeature);
+            const liveLow = getPercentile(liveFeatures, 0.15);
+            const liveMedian = getPercentile(liveFeatures, 0.5);
+            const emptyHigh = getPercentile(emptyFeatures, 0.97);
+            let threshold = (liveLow + emptyHigh) / 2;
+
+            if (threshold >= liveLow) {
+                threshold = liveLow * 0.88;
+            }
+
+            return {
+                threshold,
+                liveMedian,
+                emptyHigh,
+                liveP10Max: Math.max(...liveScores.map((score) => score.p10)) + 14,
+                liveMedianMax: Math.max(...liveScores.map((score) => score.median)) + 26,
+                createdAt: Date.now()
+            };
+        }
+
+        function classifyCameraScore(score) {
+            if (cameraCalibrationProfile) {
+                const feature = getCameraDarkFeature(score);
+                return (
+                    feature >= cameraCalibrationProfile.threshold &&
+                    (
+                        score.p10 <= cameraCalibrationProfile.liveP10Max ||
+                        score.median <= cameraCalibrationProfile.liveMedianMax
+                    )
+                );
+            }
+
+            return (
+                (score.dark85 > 0.65 && score.median < 80) ||
+                (score.dark50 > 0.72 && score.median < 62) ||
+                (score.dark35 > 0.42 && score.dark65 > 0.68 && score.median < 72)
+            );
+        }
+
+        function analyzeGridImage(sourceCanvas) {
+            const recognition = getCameraRecognitionData(sourceCanvas);
+            const normalizedCanvas = recognition.normalizedCanvas;
+            const scores = recognition.scores;
+
             const nextGrid = createGrid();
             let liveCount = 0;
 
             scores.forEach((score) => {
-                const live =
-                    (score.dark85 > 0.65 && score.median < 80) ||
-                    (score.dark50 > 0.72 && score.median < 62) ||
-                    (score.dark35 > 0.42 && score.dark65 > 0.68 && score.median < 72);
-                if (live) {
+                if (classifyCameraScore(score)) {
                     nextGrid[score.row][score.col] = 1;
                     liveCount += 1;
                 }
             });
 
-            const cleanedGrid = cleanNoisyCameraGrid(nextGrid);
+            const markerRecoveredGrid = normalizedCanvas.markerAligned && !cameraCalibrationProfile ? recoverMarkerPatternCells(nextGrid, scores) : nextGrid;
+            const markerCleanedGrid = normalizedCanvas.markerAligned ? cleanDenseMarkerGrid(removeMarkerEdgeSingletons(markerRecoveredGrid)) : markerRecoveredGrid;
+            const cleanedGrid = cleanNoisyCameraGrid(markerCleanedGrid);
             liveCount = 0;
             cleanedGrid.forEach((row) => {
                 row.forEach((value) => {
@@ -2582,7 +3377,10 @@
             pendingCameraGrid = cleanedGrid;
             cameraApplyButton.disabled = false;
             drawCameraPreview(scores, cleanedGrid);
-            cameraStatus.textContent = 'Preview com ' + liveCount + ' celulas vivas. Toque OK para aplicar ou tente outra foto.';
+            cameraStatus.textContent =
+                'Preview com ' + liveCount + ' celulas vivas' +
+                (cameraCalibrationProfile ? ' usando calibracao ativa.' : '.') +
+                ' Toque OK para aplicar ou tente outra foto.';
         }
 
         function applyCameraGrid() {
@@ -2766,6 +3564,14 @@
 
         syncPatternColors();
         const patternFamilies = createPatternFamilies();
+        try {
+            const savedCalibration = localStorage.getItem('golCameraCalibrationProfile');
+            if (savedCalibration) {
+                cameraCalibrationProfile = JSON.parse(savedCalibration);
+            }
+        } catch (error) {
+            cameraCalibrationProfile = null;
+        }
 
         canvas.addEventListener('click', (event) => {
             if (longPressActive) {
@@ -2876,6 +3682,8 @@
         cameraCaptureButton.addEventListener('click', captureCameraFrame);
         cameraCloseButton.addEventListener('click', closeCameraPanel);
         cameraFileButton.addEventListener('click', () => cameraFileInput.click());
+        cameraCalibrateButton.addEventListener('click', () => cameraCalibrationInput.click());
+        cameraClearCalibrationButton.addEventListener('click', clearCameraCalibration);
         cameraApplyButton.addEventListener('click', applyCameraGrid);
         cameraShotInput.addEventListener('change', (event) => {
             loadCameraFile(event.target.files[0]);
@@ -2883,6 +3691,10 @@
         });
         cameraFileInput.addEventListener('change', (event) => {
             loadCameraFile(event.target.files[0]);
+            event.target.value = '';
+        });
+        cameraCalibrationInput.addEventListener('change', (event) => {
+            loadCameraCalibrationFile(event.target.files[0]);
             event.target.value = '';
         });
         patternCatalogButton.addEventListener('click', togglePatternCatalog);

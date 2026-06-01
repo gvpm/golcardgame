@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="68mm" height="17mm" viewBox="0 0 68 17">
+  <defs>
+    <g id="marker">
+      <rect x="0.4" y="0.4" width="16.2" height="16.2" fill="#fff" stroke="#000" stroke-width="0.8"/>
+    </g>
+  </defs>
+  <use href="#marker" x="0" y="0"/>
+  <path d="M3 3h11v3.5H6.5V14H3z" fill="#000"/>
+  <use href="#marker" x="17" y="0"/>
+  <path d="M20 3h11v11h-3.5V6.5H20z" fill="#000"/>
+  <use href="#marker" x="34" y="0"/>
+  <path d="M37 3h3.5v7.5H48V14H37z" fill="#000"/>
+  <use href="#marker" x="51" y="0"/>
+  <path d="M54 10.5h7.5V3H65v11H54z" fill="#000"/>
+</svg>
