@@ -2400,18 +2400,18 @@
             cameraShotInput.click();
         }
 
-        function loadCameraFile(file) {
+        function loadCameraFile(file, options = {}) {
             if (!file) return;
             cameraPickerIgnoreCloseUntil = Date.now() + 2500;
             cameraModal.classList.add('open');
             cameraButton.classList.add('active');
             cameraStatus.textContent = 'Processando foto...';
 
-            loadImageFileToCanvas(file, analyzeGridImage);
+            loadImageFileToCanvas(file, analyzeGridImage, options);
         }
 
-        async function loadImageFileToCanvas(file, callback) {
-            const maxSide = 1280;
+        async function loadImageFileToCanvas(file, callback, options = {}) {
+            const maxSide = options.maxSide || 1280;
             if ('createImageBitmap' in window) {
                 try {
                     const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -4567,7 +4567,7 @@
             refreshCameraRecognitionPreview();
         });
         cameraShotInput.addEventListener('change', (event) => {
-            loadCameraFile(event.target.files[0]);
+            loadCameraFile(event.target.files[0], { maxSide: 960 });
             event.target.value = '';
         });
         cameraFileInput.addEventListener('change', (event) => {
