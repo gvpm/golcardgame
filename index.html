@@ -28,12 +28,17 @@
 
         * {
             box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
             margin: 0;
             min-height: 100vh;
             overflow: hidden;
+            overscroll-behavior: none;
+            touch-action: none;
             background:
                 radial-gradient(circle at top left, rgba(125, 211, 167, 0.12), transparent 26%),
                 linear-gradient(135deg, #0a0d11, #131922 55%, #1a222d);
@@ -56,6 +61,7 @@
             width: 100vw;
             height: 100vh;
             display: block;
+            touch-action: none;
         }
 
         .top-menu,
@@ -504,7 +510,7 @@
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
-            margin-bottom: 16px;
+            margin-top: 16px;
         }
 
         .pattern-controls {
@@ -1051,8 +1057,8 @@
                     <span id="overlap-label">Desligado</span>
                 </label>
             </div>
-            <div class="pattern-summary" id="pattern-summary"></div>
             <div class="pattern-list" id="pattern-list"></div>
+            <div class="pattern-summary" id="pattern-summary"></div>
         </div>
     </div>
     <div class="pattern-tip" id="pattern-tip">
@@ -3828,8 +3834,8 @@
             }
 
             const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
+            const x = (event.clientX - rect.left) * (canvas.width / Math.max(1, rect.width));
+            const y = (event.clientY - rect.top) * (canvas.height / Math.max(1, rect.height));
 
             const displayCol = Math.floor((x - gridOriginX) / cellSize);
             const displayRow = Math.floor((y - gridOriginY) / cellSize);
@@ -4013,6 +4019,36 @@
 
         window.addEventListener('resize', resizeCanvas);
         document.addEventListener('fullscreenchange', updateFullscreenBtn);
+
+        function keepAndroidBackInsideApp() {
+            try {
+                window.history.pushState({ golAppGuard: true }, '', window.location.href);
+            } catch (error) {
+                return;
+            }
+
+            window.addEventListener('popstate', () => {
+                if (cameraModal.classList.contains('open')) {
+                    closeCameraPanel();
+                } else if (patternModal.classList.contains('open')) {
+                    hidePatternTextPanel();
+                } else if (!mainContent.hidden && mainContent.style.display !== 'none') {
+                    hideOverlay();
+                } else {
+                    setMenusVisible(true);
+                }
+
+                window.setTimeout(() => {
+                    try {
+                        window.history.pushState({ golAppGuard: true }, '', window.location.href);
+                    } catch (error) {
+                        // Browser history remains usable if the guard cannot be restored.
+                    }
+                }, 0);
+            });
+        }
+
+        keepAndroidBackInsideApp();
 
         window.addEventListener('beforeinstallprompt', (event) => {
             event.preventDefault();
