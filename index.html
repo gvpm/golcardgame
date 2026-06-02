@@ -1100,6 +1100,9 @@
         let cellSize = 16;
         let gridOriginX = 0;
         let gridOriginY = 0;
+        let displayRows = 14;
+        let displayCols = 20;
+        let gridRotatedForPortrait = false;
 
         let grid = createGrid();
         let running = false;
@@ -1182,14 +1185,50 @@
             return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
         }
 
+        function isViewportPortrait() {
+            const viewportWidth = window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0;
+            const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+            const screenType = window.screen?.orientation?.type || '';
+            return (
+                viewportHeight > viewportWidth ||
+                window.matchMedia?.('(orientation: portrait)').matches ||
+                screenType.includes('portrait')
+            );
+        }
+
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            cellSize = Math.min(canvas.width / COLS, canvas.height / ROWS);
-            gridOriginX = (canvas.width - cellSize * COLS) / 2;
-            gridOriginY = (canvas.height - cellSize * ROWS) / 2;
+            gridRotatedForPortrait = isViewportPortrait();
+            displayRows = gridRotatedForPortrait ? COLS : ROWS;
+            displayCols = gridRotatedForPortrait ? ROWS : COLS;
+            cellSize = Math.min(canvas.width / displayCols, canvas.height / displayRows);
+            gridOriginX = (canvas.width - cellSize * displayCols) / 2;
+            gridOriginY = (canvas.height - cellSize * displayRows) / 2;
             drawGrid();
+        }
+
+        function logicalToDisplayCell(row, col) {
+            if (!gridRotatedForPortrait) {
+                return { row, col };
+            }
+
+            return {
+                row: col,
+                col: ROWS - row - 1
+            };
+        }
+
+        function displayToLogicalCell(row, col) {
+            if (!gridRotatedForPortrait) {
+                return { row, col };
+            }
+
+            return {
+                row: ROWS - col - 1,
+                col: row
+            };
         }
 
         function updateSizeLabel() {
@@ -1221,8 +1260,8 @@
             const deadColor = inverted ? '#eef2f7' : '#171a1e';
             const aliveColor = inverted ? '#0d1014' : '#f4f7fb';
             const lineColor = inverted ? '#b8c2cf' : '#080a0d';
-            const gridWidth = cellSize * COLS;
-            const gridHeight = cellSize * ROWS;
+            const gridWidth = cellSize * displayCols;
+            const gridHeight = cellSize * displayRows;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#0a0d11';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1233,10 +1272,11 @@
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
                     if (!grid[row][col]) continue;
+                    const displayCell = logicalToDisplayCell(row, col);
                     ctx.fillStyle = aliveColor;
                     ctx.fillRect(
-                        gridOriginX + col * cellSize + 1,
-                        gridOriginY + row * cellSize + 1,
+                        gridOriginX + displayCell.col * cellSize + 1,
+                        gridOriginY + displayCell.row * cellSize + 1,
                         Math.max(cellSize - 2, 1),
                         Math.max(cellSize - 2, 1)
                     );
@@ -1246,7 +1286,7 @@
             ctx.strokeStyle = lineColor;
             ctx.lineWidth = 1;
 
-            for (let row = 0; row <= ROWS; row++) {
+            for (let row = 0; row <= displayRows; row++) {
                 const y = gridOriginY + row * cellSize;
                 ctx.beginPath();
                 ctx.moveTo(gridOriginX, y);
@@ -1254,7 +1294,7 @@
                 ctx.stroke();
             }
 
-            for (let col = 0; col <= COLS; col++) {
+            for (let col = 0; col <= displayCols; col++) {
                 const x = gridOriginX + col * cellSize;
                 ctx.beginPath();
                 ctx.moveTo(x, gridOriginY);
@@ -1279,8 +1319,9 @@
                 ctx.lineWidth = Math.max(2, cellSize * 0.045);
 
                 for (const [cellRow, cellCol] of match.liveCells) {
-                    const x = gridOriginX + cellCol * cellSize;
-                    const y = gridOriginY + cellRow * cellSize;
+                    const displayCell = logicalToDisplayCell(cellRow, cellCol);
+                    const x = gridOriginX + displayCell.col * cellSize;
+                    const y = gridOriginY + displayCell.row * cellSize;
                     ctx.fillRect(x, y, cellSize, cellSize);
                     ctx.strokeRect(
                         x + inset,
@@ -3790,8 +3831,11 @@
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
 
-            const col = Math.floor((x - gridOriginX) / cellSize);
-            const row = Math.floor((y - gridOriginY) / cellSize);
+            const displayCol = Math.floor((x - gridOriginX) / cellSize);
+            const displayRow = Math.floor((y - gridOriginY) / cellSize);
+            const logicalCell = displayToLogicalCell(displayRow, displayCol);
+            const row = logicalCell.row;
+            const col = logicalCell.col;
 
             if (analysisMode) {
                 const found = findPatternsAtCell(row, col);
