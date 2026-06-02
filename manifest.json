@@ -1,10 +1,10 @@
 {
   "name": "Gol Card Game",
   "short_name": "Gol Card",
-  "description": "Game of Life otimizado para celular em horizontal.",
+  "description": "Game of Life otimizado para celular.",
   "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "landscape",
+  "orientation": "portrait",
   "background_color": "#0a0d11",
   "theme_color": "#0a0d11",
   "icons": [
