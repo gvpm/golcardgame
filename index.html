@@ -3086,20 +3086,17 @@
                     const cols = component.map(([, componentCol]) => componentCol);
                     const rowSpan = Math.max(...rows) - Math.min(...rows) + 1;
                     const colSpan = Math.max(...cols) - Math.min(...cols) + 1;
-                    const edgeCells = component.filter(([componentRow, componentCol]) =>
-                        componentRow === 0 ||
-                        componentCol === 0 ||
-                        componentRow === ROWS - 1 ||
-                        componentCol === COLS - 1
-                    ).length;
-                    const edgeHeavy = edgeCells / component.length > 0.62;
+                    const nearCorner = component.some(([componentRow, componentCol]) =>
+                        (componentRow <= 1 || componentRow >= ROWS - 2) &&
+                        (componentCol <= 1 || componentCol >= COLS - 2)
+                    );
                     const lineLike =
                         (rowSpan === 1 && colSpan >= 3) ||
                         (colSpan === 1 && rowSpan >= 3) ||
                         (rowSpan <= 2 && colSpan >= 5) ||
                         (colSpan <= 2 && rowSpan >= 5);
 
-                    if (touchesEdge && (component.length === 1 || lineLike || edgeHeavy || component.length > 8)) {
+                    if (touchesEdge && ((component.length === 1 && nearCorner) || lineLike || component.length > 8)) {
                         component.forEach(([componentRow, componentCol]) => {
                             cleanedGrid[componentRow][componentCol] = 0;
                         });
@@ -4259,23 +4256,35 @@
         }
 
         function analyzeCameraGridImage(sourceCanvas) {
-            const candidates = [sourceCanvas, resizeCanvasForRecognition(sourceCanvas, 960), resizeCanvasForRecognition(sourceCanvas, 720)]
-                .filter((canvas, index, list) => index === 0 || canvas.width !== list[index - 1].width || canvas.height !== list[index - 1].height)
-                .map((canvas) => {
+            const candidateCanvases = [sourceCanvas, resizeCanvasForRecognition(sourceCanvas, 960), resizeCanvasForRecognition(sourceCanvas, 720)]
+                .filter((canvas, index, list) => index === 0 || canvas.width !== list[index - 1].width || canvas.height !== list[index - 1].height);
+            const candidates = candidateCanvases
+                .map((canvas, index) => {
                     const recognition = getCameraRecognitionData(canvas);
                     const markerAligned = Boolean(recognition.normalizedCanvas.markerAligned);
                     const grid = buildRecognizedGridFromScores(recognition.scores, markerAligned);
-                    return {
-                        recognition,
+                    const candidate = {
+                        scores: recognition.scores,
                         markerAligned,
                         grid,
                         score: scoreRecognitionCandidate({ grid, markerAligned })
+                    };
+                    if (recognition.normalizedCanvas && recognition.normalizedCanvas !== canvas) {
+                        recognition.normalizedCanvas.width = 0;
+                        recognition.normalizedCanvas.height = 0;
+                    }
+                    if (index > 0) {
+                        canvas.width = 0;
+                        canvas.height = 0;
+                    }
+                    return {
+                        ...candidate
                     };
                 })
                 .sort((a, b) => b.score - a.score);
 
             const best = candidates[0];
-            pendingCameraScores = best.recognition.scores;
+            pendingCameraScores = best.scores;
             pendingCameraMarkerAligned = best.markerAligned;
             pendingCameraGrid = best.grid;
             pendingCameraLiveCount = countLiveCells(best.grid);
