@@ -3868,6 +3868,40 @@
             };
         }
 
+        function constrainMarkerGridBounds(approximateBounds, refinedBounds) {
+            if (!refinedBounds) return approximateBounds;
+
+            const expectedWidth = approximateBounds.right - approximateBounds.left;
+            const expectedHeight = approximateBounds.bottom - approximateBounds.top;
+            const refinedWidth = refinedBounds.right - refinedBounds.left;
+            const refinedHeight = refinedBounds.bottom - refinedBounds.top;
+            const expectedCenterX = (approximateBounds.left + approximateBounds.right) / 2;
+            const expectedCenterY = (approximateBounds.top + approximateBounds.bottom) / 2;
+            const refinedCenterX = (refinedBounds.left + refinedBounds.right) / 2;
+            const refinedCenterY = (refinedBounds.top + refinedBounds.bottom) / 2;
+            const centerShiftX = Math.abs(refinedCenterX - expectedCenterX);
+            const centerShiftY = Math.abs(refinedCenterY - expectedCenterY);
+            const cellW = expectedWidth / COLS;
+            const cellH = expectedHeight / ROWS;
+            const widthDiff = Math.abs(refinedWidth - expectedWidth) / Math.max(1, expectedWidth);
+            const heightDiff = Math.abs(refinedHeight - expectedHeight) / Math.max(1, expectedHeight);
+            const safeRefinement =
+                centerShiftX <= cellW * 0.42 &&
+                centerShiftY <= cellH * 0.42 &&
+                widthDiff <= 0.035 &&
+                heightDiff <= 0.035;
+
+            if (!safeRefinement) return approximateBounds;
+
+            const blend = 0.22;
+            return {
+                left: approximateBounds.left * (1 - blend) + refinedBounds.left * blend,
+                top: approximateBounds.top * (1 - blend) + refinedBounds.top * blend,
+                right: approximateBounds.right * (1 - blend) + refinedBounds.right * blend,
+                bottom: approximateBounds.bottom * (1 - blend) + refinedBounds.bottom * blend
+            };
+        }
+
         function ensureCameraGridResolution() {
             if (ROWS !== 14 || COLS !== 20) {
                 ROWS = 14;
@@ -3886,10 +3920,13 @@
             const imageData = sourceCtx.getImageData(0, 0, width, height);
             const fallbackBounds = () => detectGridBounds(imageData, width, height, detectOuterBoardBounds(imageData, width, height));
             const markerBounds = normalizedCanvas.markerAligned && normalizedCanvas.markerGridBounds
-                ? refineMarkerGridBounds(imageData, normalizedCanvas.markerGridBounds)
+                ? constrainMarkerGridBounds(
+                    normalizedCanvas.markerGridBounds,
+                    refineMarkerGridBounds(imageData, normalizedCanvas.markerGridBounds)
+                )
                 : null;
             const bounds = normalizedCanvas.markerAligned
-                ? (markerBounds || detectMarkerGridBounds(imageData, width, height) || fallbackBounds())
+                ? (markerBounds || normalizedCanvas.markerGridBounds || detectMarkerGridBounds(imageData, width, height) || fallbackBounds())
                 : fallbackBounds();
             const boardWidth = Math.max(1, bounds.right - bounds.left);
             const boardHeight = Math.max(1, bounds.bottom - bounds.top);
