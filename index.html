@@ -448,11 +448,6 @@
             display: none;
         }
 
-        #close-overlay {
-            background: rgba(125, 211, 167, 0.12);
-            border-color: rgba(125, 211, 167, 0.25);
-        }
-
         .overlay-card {
             position: relative;
             z-index: 5;
@@ -1062,7 +1057,6 @@
         <div class="menu-panel" id="top-menu-panel">
             <button id="show-project">Card GOL</button>
             <button id="install-app" hidden>Instalar app</button>
-            <button id="close-overlay">Ocultar conteudo</button>
         </div>
     </div>
 
@@ -4729,7 +4723,13 @@
         const menuToggle = document.getElementById('menu-toggle');
         const menuPanel = document.getElementById('menu-panel');
 
-        topMenuToggle.addEventListener('click', () => {
+        topMenuToggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (mainContent.style.display !== 'none') {
+                mainContent.style.display = 'none';
+                topMenuPanel.classList.remove('open');
+                return;
+            }
             topMenuPanel.classList.toggle('open');
         });
 
@@ -4750,9 +4750,17 @@
             topMenuPanel.classList.remove('open');
         });
 
-        document.getElementById('close-overlay').addEventListener('click', () => {
-            mainContent.style.display = 'none';
-            topMenuPanel.classList.remove('open');
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.top-menu')) {
+                topMenuPanel.classList.remove('open');
+            }
+            if (
+                mainContent.style.display !== 'none' &&
+                !mainContent.contains(event.target) &&
+                !event.target.closest('.top-menu')
+            ) {
+                mainContent.style.display = 'none';
+            }
         });
 
         document.getElementById('btn-play').addEventListener('click', toggleRun);
