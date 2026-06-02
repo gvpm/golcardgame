@@ -3251,6 +3251,15 @@
             );
         }
 
+        function getCameraCellCenterStrength(score, thresholds) {
+            if (!score || !thresholds) return 0;
+            const centerDark85 = (score.centerDark85 ?? score.dark85) / Math.max(0.001, thresholds.dark85Threshold);
+            const centerDark50 = (score.centerDark50 ?? score.dark50) / Math.max(0.001, thresholds.dark50Threshold);
+            const centerP10 = (thresholds.p10Threshold + 36 - (score.centerP10 ?? score.p10)) / 36;
+            const centerMedian = (thresholds.medianThreshold + 42 - (score.centerMedian ?? score.median)) / 42;
+            return Math.max(centerDark85 * 0.9, centerDark50 * 0.88, centerP10, centerMedian);
+        }
+
         function isNearLiveCameraScore(score, thresholds) {
             if (!score || !thresholds) return false;
             const strength = getCameraCellStrength(score, thresholds);
@@ -3286,6 +3295,8 @@
                     ];
                     const liveCount = cells.filter(([cellRow, cellCol]) => repairedGrid[cellRow][cellCol]).length;
                     if (liveCount < 2) continue;
+                    const nearGridEdge = row <= 2 || col <= 2 || row >= ROWS - 4 || col >= COLS - 4;
+                    if (nearGridEdge && liveCount < 3) continue;
                     if (countLiveAroundBlock(repairedGrid, row, col) > 1) continue;
 
                     let nearCount = 0;
@@ -3306,6 +3317,58 @@
             }
 
             return repairedGrid;
+        }
+
+        function trimWeakNearEdgeBlocks(candidateGrid, scores, thresholds) {
+            const trimmedGrid = candidateGrid.map((row) => row.slice());
+            const scoreMap = getScoreMap(scores);
+
+            for (let row = 0; row < ROWS - 1; row++) {
+                for (let col = 0; col < COLS - 1; col++) {
+                    const nearGridEdge = row <= 2 || col <= 2 || row >= ROWS - 4 || col >= COLS - 4;
+                    if (!nearGridEdge) continue;
+
+                    const cells = [
+                        [row, col],
+                        [row, col + 1],
+                        [row + 1, col],
+                        [row + 1, col + 1]
+                    ];
+                    if (!cells.every(([cellRow, cellCol]) => trimmedGrid[cellRow][cellCol])) continue;
+
+                    const cellScores = cells.map(([cellRow, cellCol]) => ({
+                        row: cellRow,
+                        col: cellCol,
+                        strength: getCameraCellStrength(getMappedScore(scoreMap, cellRow, cellCol), thresholds),
+                        centerStrength: getCameraCellCenterStrength(getMappedScore(scoreMap, cellRow, cellCol), thresholds)
+                    }));
+                    const pairOptions = [
+                        { keep: [cellScores[0], cellScores[1]], remove: [cellScores[2], cellScores[3]] },
+                        { keep: [cellScores[2], cellScores[3]], remove: [cellScores[0], cellScores[1]] },
+                        { keep: [cellScores[0], cellScores[2]], remove: [cellScores[1], cellScores[3]] },
+                        { keep: [cellScores[1], cellScores[3]], remove: [cellScores[0], cellScores[2]] }
+                    ].map((option) => ({
+                        ...option,
+                        keepAverage: (option.keep[0].strength + option.keep[1].strength) / 2,
+                        keepCenterAverage: (option.keep[0].centerStrength + option.keep[1].centerStrength) / 2,
+                        removeAverage: (option.remove[0].strength + option.remove[1].strength) / 2,
+                        removeCenterAverage: (option.remove[0].centerStrength + option.remove[1].centerStrength) / 2
+                    }));
+                    const bestPair = pairOptions.sort((a, b) => b.keepCenterAverage - a.keepCenterAverage)[0];
+
+                    if (
+                        bestPair.keepCenterAverage >= 0.9 &&
+                        bestPair.removeCenterAverage < bestPair.keepCenterAverage * 0.94 &&
+                        bestPair.removeAverage < bestPair.keepAverage * 1.12
+                    ) {
+                        bestPair.remove.forEach((cell) => {
+                            trimmedGrid[cell.row][cell.col] = 0;
+                        });
+                    }
+                }
+            }
+
+            return trimmedGrid;
         }
 
         function compactCameraComponents(candidateGrid, scores, thresholds) {
@@ -3939,7 +4002,12 @@
                     const sampleRight = Math.ceil(cellLeft + cellW * 0.72);
                     const sampleTop = Math.floor(cellTop + cellH * 0.28);
                     const sampleBottom = Math.ceil(cellTop + cellH * 0.72);
+                    const centerLeft = Math.floor(cellLeft + cellW * 0.43);
+                    const centerRight = Math.ceil(cellLeft + cellW * 0.57);
+                    const centerTop = Math.floor(cellTop + cellH * 0.43);
+                    const centerBottom = Math.ceil(cellTop + cellH * 0.57);
                     const lumas = [];
+                    const centerLumas = [];
 
                     for (let y = sampleTop; y < sampleBottom; y++) {
                         if (y < 0 || y >= height) continue;
@@ -3951,17 +4019,26 @@
                             const b = imageData.data[index + 2];
                             const luma = 0.299 * r + 0.587 * g + 0.114 * b;
                             lumas.push(luma);
+                            if (x >= centerLeft && x < centerRight && y >= centerTop && y < centerBottom) {
+                                centerLumas.push(luma);
+                            }
                         }
                     }
 
                     lumas.sort((a, b) => a - b);
+                    centerLumas.sort((a, b) => a - b);
                     const count = lumas.length;
+                    const centerCount = centerLumas.length;
                     const dark35 = count ? lumas.filter((value) => value < 35).length / count : 0;
                     const dark50 = count ? lumas.filter((value) => value < 50).length / count : 0;
                     const dark65 = count ? lumas.filter((value) => value < 65).length / count : 0;
                     const dark85 = count ? lumas.filter((value) => value < 85).length / count : 0;
+                    const centerDark50 = centerCount ? centerLumas.filter((value) => value < 50).length / centerCount : dark50;
+                    const centerDark85 = centerCount ? centerLumas.filter((value) => value < 85).length / centerCount : dark85;
                     const p10 = count ? lumas[Math.floor(count * 0.1)] : 255;
                     const median = count ? lumas[Math.floor(count * 0.5)] : 255;
+                    const centerP10 = centerCount ? centerLumas[Math.floor(centerCount * 0.1)] : p10;
+                    const centerMedian = centerCount ? centerLumas[Math.floor(centerCount * 0.5)] : median;
 
                     scores.push({
                         row,
@@ -3971,7 +4048,11 @@
                         dark65,
                         dark85,
                         p10,
-                        median
+                        median,
+                        centerDark50,
+                        centerDark85,
+                        centerP10,
+                        centerMedian
                     });
                 }
             }
@@ -4144,7 +4225,8 @@
             const blockRecoveredGrid = fillLikelyPhysicalBlocks(nextGrid, scores, adaptiveThresholds);
             const compactedGrid = markerAligned ? compactCameraComponents(blockRecoveredGrid, scores, adaptiveThresholds) : blockRecoveredGrid;
             const markerRecoveredGrid = markerAligned ? recoverMarkerPatternCells(compactedGrid, scores) : compactedGrid;
-            const markerCleanedGrid = markerAligned ? cleanDenseMarkerGrid(removeMarkerEdgeSingletons(markerRecoveredGrid)) : markerRecoveredGrid;
+            const edgeTrimmedGrid = markerAligned ? trimWeakNearEdgeBlocks(markerRecoveredGrid, scores, adaptiveThresholds) : markerRecoveredGrid;
+            const markerCleanedGrid = markerAligned ? cleanDenseMarkerGrid(removeMarkerEdgeSingletons(edgeTrimmedGrid)) : edgeTrimmedGrid;
             return cleanNoisyCameraGrid(markerCleanedGrid);
         }
 
