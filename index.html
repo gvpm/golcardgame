@@ -4250,9 +4250,9 @@
             return (
                 (candidate.markerAligned ? 18 : 0) +
                 Math.min(liveCount, 18) * 0.75 -
-                edgeLive * 3.2 -
-                longEdgeRun * 2.6 -
-                lineLike * 1.8 -
+                edgeLive * 1.15 -
+                longEdgeRun * 3 -
+                lineLike * 2.2 -
                 densePenalty -
                 sparsePenalty
             );
