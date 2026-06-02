@@ -3589,7 +3589,7 @@
             const medianGap = Math.max(12, emptyMedianLumaLow - liveMedianLumaHigh);
 
             return {
-                version: 5,
+                version: 6,
                 blockCells: Array.from(blockCells),
                 livePrototype: {
                     feature: liveMedian,
@@ -3623,19 +3623,106 @@
             cameraThresholdValue.textContent = value > 0 ? '+' + value : String(value);
         }
 
-        function classifyCameraScore(score) {
+        function getOtsuThreshold(values) {
+            if (!values.length) return 0;
+            const minValue = Math.min(...values);
+            const maxValue = Math.max(...values);
+            if (maxValue <= minValue + 0.0001) return maxValue;
+
+            const bins = 64;
+            const histogram = Array(bins).fill(0);
+            values.forEach((value) => {
+                const index = Math.max(0, Math.min(bins - 1, Math.floor((value - minValue) / (maxValue - minValue) * (bins - 1))));
+                histogram[index] += 1;
+            });
+
+            let totalSum = 0;
+            histogram.forEach((count, index) => {
+                totalSum += index * count;
+            });
+
+            let backgroundWeight = 0;
+            let backgroundSum = 0;
+            let bestVariance = -1;
+            let bestIndex = Math.floor(bins / 2);
+            const totalWeight = values.length;
+
+            histogram.forEach((count, index) => {
+                backgroundWeight += count;
+                if (!backgroundWeight || backgroundWeight === totalWeight) return;
+                backgroundSum += index * count;
+                const foregroundWeight = totalWeight - backgroundWeight;
+                const backgroundMean = backgroundSum / backgroundWeight;
+                const foregroundMean = (totalSum - backgroundSum) / foregroundWeight;
+                const variance = backgroundWeight * foregroundWeight * Math.pow(backgroundMean - foregroundMean, 2);
+                if (variance > bestVariance) {
+                    bestVariance = variance;
+                    bestIndex = index;
+                }
+            });
+
+            return minValue + (bestIndex + 0.5) / bins * (maxValue - minValue);
+        }
+
+        function getAdaptiveCameraThresholds(scores) {
             const adjustment = getCameraAdjustmentRatio();
-            if (cameraCalibrationProfile) {
+            const features = scores.map(getCameraDarkFeature);
+            const dark85Values = scores.map((score) => score.dark85);
+            const dark50Values = scores.map((score) => score.dark50);
+            const p10Values = scores.map((score) => score.p10);
+            const medianValues = scores.map((score) => score.median);
+            const featureMedian = getPercentile(features, 0.5);
+            const featureP85 = getPercentile(features, 0.85);
+            const featureP90 = getPercentile(features, 0.9);
+            const featureP95 = getPercentile(features, 0.95);
+            const featureP98 = getPercentile(features, 0.98);
+            const otsu = getOtsuThreshold(features);
+            const featureSpread = Math.max(0.018, featureP95 - featureMedian);
+            const adaptiveFeature = Math.max(
+                featureMedian + featureSpread * 1.15,
+                featureP85 + Math.max(0.018, featureSpread * 0.36),
+                Math.min(otsu, featureP95 + 0.035)
+            );
+            const calibrationFeature = cameraCalibrationProfile
+                ? Math.max(featureMedian + 0.035, (cameraCalibrationProfile.featureThreshold || adaptiveFeature) * 0.92)
+                : adaptiveFeature;
+            const featureThreshold = (cameraCalibrationProfile
+                ? Math.max(Math.min(adaptiveFeature, calibrationFeature), featureMedian + 0.035)
+                : adaptiveFeature) * (1 - adjustment * 0.26);
+            const dark85Threshold = Math.max(
+                getPercentile(dark85Values, 0.88) + 0.035,
+                (cameraCalibrationProfile?.dark85Threshold || 0.24) * 0.86
+            ) * (1 - adjustment * 0.22);
+            const dark50Threshold = Math.max(
+                getPercentile(dark50Values, 0.9) + 0.025,
+                (cameraCalibrationProfile?.dark50Threshold || 0.12) * 0.82
+            ) * (1 - adjustment * 0.22);
+            const p10Threshold = Math.min(
+                getPercentile(p10Values, 0.12) - 4,
+                cameraCalibrationProfile?.p10Threshold || 92
+            ) + adjustment * 20;
+            const medianThreshold = Math.min(
+                getPercentile(medianValues, 0.14) - 4,
+                cameraCalibrationProfile?.medianThreshold || 118
+            ) + adjustment * 26;
+
+            return {
+                featureThreshold: Math.max(0.04, Math.min(featureThreshold, featureP98 + 0.02)),
+                dark85Threshold: Math.max(0.035, dark85Threshold),
+                dark50Threshold: Math.max(0.025, dark50Threshold),
+                p10Threshold,
+                medianThreshold
+            };
+        }
+
+        function classifyCameraScore(score, thresholds) {
+            const adjustment = getCameraAdjustmentRatio();
+            if (thresholds) {
                 const feature = getCameraDarkFeature(score);
-                const featureThreshold = (cameraCalibrationProfile.featureThreshold || 0.42) * (1 - adjustment * 0.34);
-                const dark85Threshold = Math.max(0.04, (cameraCalibrationProfile.dark85Threshold || 0.42) * (1 - adjustment * 0.28));
-                const dark50Threshold = Math.max(0.03, (cameraCalibrationProfile.dark50Threshold || 0.22) * (1 - adjustment * 0.28));
-                const p10Threshold = (cameraCalibrationProfile.p10Threshold || 82) + adjustment * 26;
-                const medianThreshold = (cameraCalibrationProfile.medianThreshold || 112) + adjustment * 34;
-                const featurePass = feature >= featureThreshold;
-                const darkPass = score.dark85 >= dark85Threshold || score.dark50 >= dark50Threshold;
-                const lumaPass = score.p10 <= p10Threshold || score.median <= medianThreshold;
-                const strongBlack = score.dark50 >= dark50Threshold * 1.25 || score.p10 <= p10Threshold - 16;
+                const featurePass = feature >= thresholds.featureThreshold;
+                const darkPass = score.dark85 >= thresholds.dark85Threshold || score.dark50 >= thresholds.dark50Threshold;
+                const lumaPass = score.p10 <= thresholds.p10Threshold || score.median <= thresholds.medianThreshold;
+                const strongBlack = score.dark50 >= thresholds.dark50Threshold * 1.25 || score.p10 <= thresholds.p10Threshold - 14;
 
                 return (featurePass && (darkPass || lumaPass)) || (strongBlack && darkPass && lumaPass);
             }
@@ -3649,17 +3736,14 @@
 
         function buildRecognizedGridFromScores(scores, markerAligned) {
             const nextGrid = createGrid();
+            const adaptiveThresholds = getAdaptiveCameraThresholds(scores);
             scores.forEach((score) => {
-                if (classifyCameraScore(score)) {
+                if (classifyCameraScore(score, adaptiveThresholds)) {
                     nextGrid[score.row][score.col] = 1;
                 }
             });
 
-            if (cameraCalibrationProfile) {
-                return nextGrid;
-            }
-
-            const markerRecoveredGrid = markerAligned && !cameraCalibrationProfile ? recoverMarkerPatternCells(nextGrid, scores) : nextGrid;
+            const markerRecoveredGrid = markerAligned ? recoverMarkerPatternCells(nextGrid, scores) : nextGrid;
             const markerCleanedGrid = markerAligned ? cleanDenseMarkerGrid(removeMarkerEdgeSingletons(markerRecoveredGrid)) : markerRecoveredGrid;
             return cleanNoisyCameraGrid(markerCleanedGrid);
         }
@@ -3894,7 +3978,7 @@
             const savedCalibration = localStorage.getItem('golCameraCalibrationProfile');
             if (savedCalibration) {
                 const parsedCalibration = JSON.parse(savedCalibration);
-                cameraCalibrationProfile = parsedCalibration?.version === 5 ? parsedCalibration : null;
+                cameraCalibrationProfile = parsedCalibration?.version === 6 ? parsedCalibration : null;
                 if (!cameraCalibrationProfile) {
                     localStorage.removeItem('golCameraCalibrationProfile');
                 }
