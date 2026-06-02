@@ -632,6 +632,20 @@
             box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
         }
 
+        .pattern-match-icon {
+            display: inline-grid;
+            min-width: 28px;
+            height: 28px;
+            place-items: center;
+            padding: 0 6px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.07);
+            color: var(--text);
+            font-size: 1rem;
+            line-height: 1;
+        }
+
         .pattern-entry strong {
             display: block;
             margin-bottom: 4px;
@@ -711,6 +725,21 @@
             height: 9px;
             margin-top: 3px;
             border-radius: 999px;
+        }
+
+        .pattern-tip-icon {
+            display: inline-grid;
+            min-width: 22px;
+            height: 22px;
+            place-items: center;
+            margin-right: 6px;
+            padding: 0 4px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.07);
+            color: var(--text);
+            font-size: 0.86rem;
+            line-height: 1;
         }
 
         .pattern-tip-item b {
@@ -1222,6 +1251,8 @@
         let longPressActive = false;
         let patternOverlay = null;
         let highlightedPatternIndex = null;
+        let patterns = {};
+        let patternFamilies = {};
         let analysisMode = false;
         let allowOverlappingPatterns = true;
         let pendingCameraGrid = null;
@@ -1792,32 +1823,46 @@
                 category: def.category,
                 phaseCount: def.phaseCount || 4,
                 mirrors: Boolean(def.mirrors),
+                icon: def.icon || '',
+                mirroredIcon: def.mirroredIcon || def.icon || '',
                 pattern: def.pattern,
                 color: patternColorPalette[index % patternColorPalette.length]
             }));
         }
 
         function syncPatternColors() {
+            Object.keys(patternColors).forEach((key) => {
+                delete patternColors[key];
+            });
             getPatternDefinitions().forEach((def) => {
                 patternColors[def.name] = def.color;
             });
         }
 
         function getPatternTransforms(def) {
-            const seeds = [clonePattern(def.pattern), rotatePattern180(def.pattern)];
+            const seeds = [
+                { pattern: clonePattern(def.pattern), mirrored: false },
+                { pattern: rotatePattern180(def.pattern), mirrored: false }
+            ];
             if (def.mirrors) {
                 const mirrored = mirrorPattern(def.pattern);
-                seeds.push(mirrored, rotatePattern180(mirrored));
+                seeds.push(
+                    { pattern: mirrored, mirrored: true },
+                    { pattern: rotatePattern180(mirrored), mirrored: true }
+                );
             }
 
             const transforms = [];
             const seen = new Set();
             for (const seed of seeds) {
-                const trimmed = trimPattern(seed);
+                const trimmed = trimPattern(seed.pattern);
                 const key = patternKey(trimmed);
                 if (!seen.has(key)) {
                     seen.add(key);
-                    transforms.push(trimmed);
+                    transforms.push({
+                        pattern: trimmed,
+                        mirrored: seed.mirrored
+                    });
                 }
             }
             return transforms;
@@ -1829,15 +1874,17 @@
             const phaseCount = def.phaseCount || 4;
 
             for (const transformed of transformPatterns) {
-                let current = trimPattern(transformed);
+                let current = trimPattern(transformed.pattern);
                 for (let phase = 0; phase < phaseCount; phase++) {
                     const trimmed = trimPattern(current);
-                            const key = def.name + '|' + patternKey(trimmed);
+                    const key = def.name + '|' + patternKey(trimmed);
                     if (!seen.has(key)) {
                         seen.add(key);
                         variants.push({
                             family: def.name,
                             phase,
+                            icon: transformed.mirrored && def.mirroredIcon ? def.mirroredIcon : def.icon,
+                            mirrored: transformed.mirrored,
                             pattern: trimmed,
                             liveCells: getLiveCells(trimmed),
                             height: trimmed.length,
@@ -1884,13 +1931,13 @@
 
         function buildCatalogVariants(def) {
             const seeds = [
-                { label: 'Padrao', pattern: def.pattern }
+                { label: 'Padrao', pattern: def.pattern, icon: def.icon }
             ];
 
             if (def.mirrors) {
                 const mirrored = mirrorPattern(def.pattern);
                 if (patternKey(mirrored) !== patternKey(def.pattern)) {
-                    seeds.push({ label: 'Mirror', pattern: mirrored });
+                    seeds.push({ label: 'Mirror', pattern: mirrored, icon: def.mirroredIcon || def.icon });
                 }
             }
 
@@ -1905,6 +1952,7 @@
                         seen.add(key);
                         variants.push({
                             label: seed.label + ' fase ' + (phase + 1),
+                            icon: seed.icon,
                             pattern: trimmed
                         });
                     }
@@ -1934,7 +1982,7 @@
                     item.innerHTML = buildPatternPreviewSvg(variant.pattern);
 
                     const label = document.createElement('span');
-                    label.textContent = variant.label;
+                    label.textContent = (variant.icon ? variant.icon + ' ' : '') + variant.label;
                     item.appendChild(label);
                     variantsWrap.appendChild(item);
                 });
@@ -2039,6 +2087,8 @@
                             matches.push({
                                 family: variant.family,
                                 phase: variant.phase,
+                                icon: variant.icon,
+                                mirrored: variant.mirrored,
                                 row,
                                 col,
                                 width: variant.width,
@@ -2146,6 +2196,12 @@
                 title.textContent = match.family + ' #' + match.displayIndex;
 
                 header.appendChild(dot);
+                if (match.icon) {
+                    const icon = document.createElement('span');
+                    icon.className = 'pattern-match-icon';
+                    icon.textContent = match.icon;
+                    header.appendChild(icon);
+                }
                 header.appendChild(title);
 
                 const details = document.createElement('span');
@@ -2170,7 +2226,7 @@
             if (visibleMatches.length === 1) {
                 const match = visibleMatches[0];
                 patternTipTitle.style.color = patternColors[match.family]?.solid || '#ffffff';
-                patternTipTitle.textContent = match.family + ' #' + (match.displayIndex || '?') + ' | fase ' + (match.phase + 1);
+                patternTipTitle.textContent = (match.icon ? match.icon + ' ' : '') + match.family + ' #' + (match.displayIndex || '?') + ' | fase ' + (match.phase + 1);
                 patternTipBody.textContent =
                     'Linha ' + (match.row + 1) +
                     ' | coluna ' + (match.col + 1) +
@@ -2205,7 +2261,7 @@
                 const text = document.createElement('div');
                 const name = document.createElement('b');
                 name.style.color = colors.solid;
-                name.textContent = match.family + ' #' + (match.displayIndex || '?') + ' | fase ' + (match.phase + 1);
+                name.textContent = (match.icon ? match.icon + ' ' : '') + match.family + ' #' + (match.displayIndex || '?') + ' | fase ' + (match.phase + 1);
 
                 const details = document.createElement('small');
                 details.textContent = formatPatternMatchDetails(match);
@@ -4140,7 +4196,47 @@
             }
         }
 
-        const patterns = {
+        function normalizePatternCatalog(rawPatterns) {
+            const normalized = {};
+            Object.entries(rawPatterns || {}).forEach(([key, def]) => {
+                if (!def || !Array.isArray(def.pattern) || !def.pattern.length) return;
+                const pattern = def.pattern
+                    .filter((row) => Array.isArray(row) && row.length)
+                    .map((row) => row.map((value) => value ? 1 : 0));
+                if (!pattern.length || !pattern[0].length) return;
+
+                normalized[key] = {
+                    ...def,
+                    name: def.name || key,
+                    category: def.category || 'Pattern',
+                    phaseCount: Number(def.phaseCount) || 1,
+                    mirrors: Boolean(def.mirrors),
+                    icon: def.icon || '',
+                    mirroredIcon: def.mirroredIcon || def.icon || '',
+                    pattern
+                };
+            });
+            return normalized;
+        }
+
+        async function loadPatternCatalogFromCards() {
+            try {
+                const response = await fetch('cards.json', { cache: 'no-store' });
+                if (!response.ok) throw new Error('cards.json unavailable');
+                const cards = await response.json();
+                const loadedPatterns = normalizePatternCatalog(cards.patterns);
+                if (Object.keys(loadedPatterns).length) {
+                    patterns = loadedPatterns;
+                    return;
+                }
+            } catch (error) {
+                // Keep the embedded fallback when cards.json is not reachable.
+            }
+
+            patterns = normalizePatternCatalog(fallbackPatterns);
+        }
+
+        const fallbackPatterns = {
             glider: {
                 name: 'Glider',
                 category: 'Spaceship',
@@ -4275,8 +4371,8 @@
             }
         };
 
-        syncPatternColors();
-        const patternFamilies = createPatternFamilies();
+        patterns = normalizePatternCatalog(fallbackPatterns);
+        patternFamilies = createPatternFamilies();
         try {
             const savedAdjustment = Number(localStorage.getItem('golCameraThresholdAdjustment') || 0);
             if (Number.isFinite(savedAdjustment)) {
@@ -4552,18 +4648,30 @@
             navigator.serviceWorker.register('sw.js').catch(() => {});
         }
 
-        injectPattern(patterns.glider.pattern);
-        resizeCanvas();
-        renderPatternCatalog();
-        renderInsertOptions();
-        updateSizeLabel();
-        updatePlayPauseBtn();
-        updateBorderBtn();
-        updateFullscreenBtn();
-        updatePatternButton();
-        updatePatternDetailsButton();
-        updateOverlapToggle();
-        updateStatus();
+        async function initializeApp() {
+            await loadPatternCatalogFromCards();
+            patternFamilies = createPatternFamilies();
+            syncPatternColors();
+
+            const initialPattern = patterns.glider?.pattern || getPatternDefinitions()[0]?.pattern;
+            if (initialPattern) {
+                injectPattern(initialPattern);
+            }
+
+            resizeCanvas();
+            renderPatternCatalog();
+            renderInsertOptions();
+            updateSizeLabel();
+            updatePlayPauseBtn();
+            updateBorderBtn();
+            updateFullscreenBtn();
+            updatePatternButton();
+            updatePatternDetailsButton();
+            updateOverlapToggle();
+            updateStatus();
+        }
+
+        initializeApp();
     </script>
 </body>
 </html>
