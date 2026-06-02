@@ -58,22 +58,6 @@
             display: block;
         }
 
-        .mobile-hint {
-            position: fixed;
-            inset: 0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 20;
-            padding: 24px;
-            background: rgba(6, 9, 12, 0.82);
-            color: var(--text);
-            text-align: center;
-            font-size: 1rem;
-            line-height: 1.5;
-            backdrop-filter: blur(10px);
-        }
-
         .top-menu,
         .menu,
         .step-control {
@@ -978,16 +962,10 @@
             }
         }
 
-        @media (orientation: portrait) and (max-width: 900px) {
-            .mobile-hint {
-                display: flex;
-            }
-        }
     </style>
 </head>
 <body>
     <canvas id="game"></canvas>
-    <div class="mobile-hint">Gire o celular para horizontal para ver o grid no formato pensado para smartphone.</div>
 
     <div class="hud" id="status">Pausado | Geracao 0 | 20 x 14</div>
 
@@ -1104,16 +1082,11 @@
             <div class="camera-actions">
                 <button id="camera-capture">Camera</button>
                 <button id="camera-file-button">Arquivo</button>
-                <button id="camera-calibrate-capture">Calib. camera</button>
-                <button id="camera-calibrate-file-button">Calib. arquivo</button>
-                <button id="camera-clear-calibration">Reset calib.</button>
                 <button class="camera-apply" id="camera-apply" disabled>OK</button>
             </div>
             <p class="camera-status" id="camera-status">Escolha uma foto do grid 20 x 14.</p>
             <input id="camera-shot-file" type="file" accept="image/*" capture="environment" hidden>
             <input id="camera-file" type="file" accept="image/*" hidden>
-            <input id="camera-calibration-shot-file" type="file" accept="image/*" capture="environment" hidden>
-            <input id="camera-calibration-file" type="file" accept="image/*" hidden>
         </div>
     </div>
 
@@ -1175,13 +1148,8 @@
         const cameraCaptureButton = document.getElementById('camera-capture');
         const cameraCloseButton = document.getElementById('camera-close');
         const cameraFileButton = document.getElementById('camera-file-button');
-        const cameraCalibrateCaptureButton = document.getElementById('camera-calibrate-capture');
-        const cameraCalibrateFileButton = document.getElementById('camera-calibrate-file-button');
-        const cameraClearCalibrationButton = document.getElementById('camera-clear-calibration');
         const cameraShotInput = document.getElementById('camera-shot-file');
         const cameraFileInput = document.getElementById('camera-file');
-        const cameraCalibrationShotInput = document.getElementById('camera-calibration-shot-file');
-        const cameraCalibrationInput = document.getElementById('camera-calibration-file');
         const cameraApplyButton = document.getElementById('camera-apply');
         const cameraStatus = document.getElementById('camera-status');
         let longPressTimer = null;
@@ -1193,7 +1161,6 @@
         let pendingCameraScores = null;
         let pendingCameraMarkerAligned = false;
         let pendingCameraLiveCount = 0;
-        let cameraCalibrationProfile = null;
         let cameraThresholdAdjustment = 0;
         let cameraPickerIgnoreCloseUntil = 0;
         const patternColorPalette = [
@@ -2184,9 +2151,7 @@
             cameraCanvas.hidden = true;
             cameraPreviewWrap.classList.remove('ready');
             cameraTuning.classList.remove('ready');
-            cameraStatus.textContent = cameraCalibrationProfile
-                ? 'Calibracao ativa. Escolha Camera ou Arquivo para reconhecer com o perfil atual.'
-                : 'Escolha Camera ou Arquivo. Use Calibrar com um grid vazio e block 2x2 no centro.';
+            cameraStatus.textContent = 'Escolha Camera ou Arquivo para reconhecer o grid fisico.';
         }
 
         function closeCameraPanel() {
@@ -2204,11 +2169,6 @@
             cameraShotInput.click();
         }
 
-        function captureCameraCalibrationFrame() {
-            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
-            cameraCalibrationShotInput.click();
-        }
-
         function loadCameraFile(file) {
             if (!file) return;
             cameraPickerIgnoreCloseUntil = Date.now() + 2500;
@@ -2217,16 +2177,6 @@
             cameraStatus.textContent = 'Processando foto...';
 
             loadImageFileToCanvas(file, analyzeGridImage);
-        }
-
-        function loadCameraCalibrationFile(file) {
-            if (!file) return;
-            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
-            cameraModal.classList.add('open');
-            cameraButton.classList.add('active');
-            cameraStatus.textContent = 'Processando calibracao...';
-
-            loadImageFileToCanvas(file, calibrateCameraRecognition);
         }
 
         async function loadImageFileToCanvas(file, callback) {
@@ -2264,41 +2214,6 @@
                 cameraStatus.textContent = 'Nao foi possivel carregar a imagem. Tente novamente.';
             };
             image.src = URL.createObjectURL(file);
-        }
-
-        function calibrateCameraRecognition(sourceCanvas) {
-            const recognition = getCameraRecognitionData(sourceCanvas);
-            const profile = buildCameraCalibrationProfile(recognition.scores);
-            if (!profile) {
-                cameraStatus.textContent = 'Nao foi possivel calibrar. Use uma foto do grid vazio com um block 2x2 exatamente no centro.';
-                return;
-            }
-
-            cameraCalibrationProfile = profile;
-            cameraThresholdAdjustment = 0;
-            cameraThresholdSlider.value = '0';
-            updateCameraThresholdLabel();
-            try {
-                localStorage.setItem('golCameraCalibrationProfile', JSON.stringify(profile));
-                localStorage.setItem('golCameraThresholdAdjustment', '0');
-            } catch (error) {
-                // Calibration still works in memory when storage is unavailable.
-            }
-            cameraStatus.textContent = 'Calibracao por celula ativa. Agora use Camera ou Arquivo para reconhecer o grid neste ambiente.';
-            cameraCanvas.hidden = true;
-            cameraPreviewWrap.classList.remove('ready');
-            pendingCameraGrid = null;
-            cameraApplyButton.disabled = true;
-        }
-
-        function clearCameraCalibration() {
-            cameraCalibrationProfile = null;
-            try {
-                localStorage.removeItem('golCameraCalibrationProfile');
-            } catch (error) {
-                // Nothing to clear if storage is unavailable.
-            }
-            cameraStatus.textContent = 'Calibracao removida. O reconhecimento voltou ao modo padrao.';
         }
 
         function getImageLuma(data, width, x, y) {
@@ -3506,113 +3421,6 @@
             return sorted[index];
         }
 
-        function getCalibrationBlockCells() {
-            return new Set(['6,9', '6,10', '7,9', '7,10']);
-        }
-
-        function findCalibrationBlockCells(scores) {
-            const byKey = new Map(scores.map((score) => [getScoreCellKey(score), score]));
-            const expectedRow = Math.floor(ROWS / 2) - 1;
-            const expectedCol = Math.floor(COLS / 2) - 1;
-            const searchRowStart = Math.max(0, expectedRow - 3);
-            const searchRowEnd = Math.min(ROWS - 2, expectedRow + 3);
-            const searchColStart = Math.max(0, expectedCol - 4);
-            const searchColEnd = Math.min(COLS - 2, expectedCol + 4);
-            let best = null;
-
-            for (let startRow = searchRowStart; startRow <= searchRowEnd; startRow++) {
-                for (let startCol = searchColStart; startCol <= searchColEnd; startCol++) {
-                    const block = [
-                        byKey.get(startRow + ',' + startCol),
-                        byKey.get(startRow + ',' + (startCol + 1)),
-                        byKey.get((startRow + 1) + ',' + startCol),
-                        byKey.get((startRow + 1) + ',' + (startCol + 1))
-                    ];
-                    if (block.some((score) => !score)) continue;
-
-                    const blockFeatures = block.map(getCameraDarkFeature);
-                    const ringFeatures = [];
-                    for (let row = Math.max(0, startRow - 2); row <= Math.min(ROWS - 1, startRow + 3); row++) {
-                        for (let col = Math.max(0, startCol - 2); col <= Math.min(COLS - 1, startCol + 3); col++) {
-                            const isBlock = row >= startRow && row <= startRow + 1 && col >= startCol && col <= startCol + 1;
-                            if (isBlock) continue;
-                            const score = byKey.get(row + ',' + col);
-                            if (score) ringFeatures.push(getCameraDarkFeature(score));
-                        }
-                    }
-
-                    const blockAverage = blockFeatures.reduce((sum, value) => sum + value, 0) / blockFeatures.length;
-                    const blockLow = getPercentile(blockFeatures, 0.1);
-                    const ringMedian = getPercentile(ringFeatures, 0.5);
-                    const ringP90 = getPercentile(ringFeatures, 0.9);
-                    const contrast = blockLow - ringP90;
-                    const centerPenalty = (Math.abs(startRow - expectedRow) + Math.abs(startCol - expectedCol)) * 0.018;
-                    const candidateScore = contrast + (blockAverage - ringMedian) * 0.55 - centerPenalty;
-
-                    if (!best || candidateScore > best.score) {
-                        best = {
-                            cells: new Set(block.map(getScoreCellKey)),
-                            contrast,
-                            score: candidateScore
-                        };
-                    }
-                }
-            }
-
-            return best && best.contrast > 0.025 ? best.cells : getCalibrationBlockCells();
-        }
-
-        function buildCameraCalibrationProfile(scores) {
-            const blockCells = findCalibrationBlockCells(scores);
-            const liveScores = scores.filter((score) => blockCells.has(getScoreCellKey(score)));
-            const emptyScores = scores.filter((score) => !blockCells.has(getScoreCellKey(score)));
-            if (liveScores.length !== 4 || emptyScores.length < 200) return null;
-
-            const liveFeatures = liveScores.map(getCameraDarkFeature);
-            const emptyFeatures = emptyScores.map(getCameraDarkFeature);
-            const liveMedian = getPercentile(liveFeatures, 0.5);
-            const liveLow = getPercentile(liveFeatures, 0.1);
-            const emptyMedian = getPercentile(emptyFeatures, 0.5);
-            const emptyP90 = getPercentile(emptyFeatures, 0.9);
-            const emptyP95 = getPercentile(emptyFeatures, 0.95);
-            const emptyP98 = getPercentile(emptyFeatures, 0.98);
-            const liveP10High = getPercentile(liveScores.map((score) => score.p10), 0.9);
-            const liveMedianLumaHigh = getPercentile(liveScores.map((score) => score.median), 0.9);
-            const liveDark85Median = getPercentile(liveScores.map((score) => score.dark85), 0.5);
-            const liveDark50Median = getPercentile(liveScores.map((score) => score.dark50), 0.5);
-            const emptyP10Low = getPercentile(emptyScores.map((score) => score.p10), 0.08);
-            const emptyMedianLumaLow = getPercentile(emptyScores.map((score) => score.median), 0.08);
-            const emptyDark85P95 = getPercentile(emptyScores.map((score) => score.dark85), 0.95);
-            const emptyDark50P95 = getPercentile(emptyScores.map((score) => score.dark50), 0.95);
-            const featureGap = Math.max(0.02, liveMedian - emptyP95);
-            const lumaGap = Math.max(10, emptyP10Low - liveP10High);
-            const medianGap = Math.max(12, emptyMedianLumaLow - liveMedianLumaHigh);
-
-            return {
-                version: 6,
-                blockCells: Array.from(blockCells),
-                livePrototype: {
-                    feature: liveMedian,
-                    featureLow: liveLow,
-                    p10: liveP10High,
-                    median: liveMedianLumaHigh,
-                    dark85: liveDark85Median,
-                    dark50: liveDark50Median
-                },
-                featureThreshold: Math.max(emptyMedian + Math.max(0.035, (emptyP90 - emptyMedian) * 1.6), emptyP95 + featureGap * 0.28),
-                dark85Threshold: Math.max(emptyDark85P95 + 0.04, liveDark85Median * 0.46),
-                dark50Threshold: Math.max(emptyDark50P95 + 0.035, liveDark50Median * 0.42),
-                p10Threshold: Math.min(emptyP10Low - 4, liveP10High + lumaGap * 0.38),
-                medianThreshold: Math.min(emptyMedianLumaLow - 5, liveMedianLumaHigh + medianGap * 0.42),
-                liveMedian,
-                emptyMedian,
-                emptyP90,
-                emptyP95,
-                emptyP98,
-                createdAt: Date.now()
-            };
-        }
-
         function getCameraAdjustmentRatio() {
             return Math.max(-1, Math.min(1, cameraThresholdAdjustment / 100));
         }
@@ -3683,27 +3491,22 @@
                 featureP85 + Math.max(0.018, featureSpread * 0.36),
                 Math.min(otsu, featureP95 + 0.035)
             );
-            const calibrationFeature = cameraCalibrationProfile
-                ? Math.max(featureMedian + 0.035, (cameraCalibrationProfile.featureThreshold || adaptiveFeature) * 0.92)
-                : adaptiveFeature;
-            const featureThreshold = (cameraCalibrationProfile
-                ? Math.max(Math.min(adaptiveFeature, calibrationFeature), featureMedian + 0.035)
-                : adaptiveFeature) * (1 - adjustment * 0.26);
+            const featureThreshold = adaptiveFeature * (1 - adjustment * 0.26);
             const dark85Threshold = Math.max(
                 getPercentile(dark85Values, 0.88) + 0.035,
-                (cameraCalibrationProfile?.dark85Threshold || 0.24) * 0.86
+                0.24 * 0.86
             ) * (1 - adjustment * 0.22);
             const dark50Threshold = Math.max(
                 getPercentile(dark50Values, 0.9) + 0.025,
-                (cameraCalibrationProfile?.dark50Threshold || 0.12) * 0.82
+                0.12 * 0.82
             ) * (1 - adjustment * 0.22);
             const p10Threshold = Math.min(
                 getPercentile(p10Values, 0.12) - 4,
-                cameraCalibrationProfile?.p10Threshold || 92
+                92
             ) + adjustment * 20;
             const medianThreshold = Math.min(
                 getPercentile(medianValues, 0.14) - 4,
-                cameraCalibrationProfile?.medianThreshold || 118
+                118
             ) + adjustment * 26;
 
             return {
@@ -3765,9 +3568,7 @@
             cameraApplyButton.disabled = false;
             drawCameraPreview(pendingCameraScores, pendingCameraGrid);
             cameraStatus.textContent =
-                'Preview com ' + pendingCameraLiveCount + ' celulas vivas' +
-                (cameraCalibrationProfile ? ' usando calibracao ativa.' : '.') +
-                ' Ajuste se precisar e toque OK.';
+                'Preview com ' + pendingCameraLiveCount + ' celulas vivas. Ajuste se precisar e toque OK.';
         }
 
         function analyzeGridImage(sourceCanvas) {
@@ -3975,16 +3776,8 @@
                 cameraThresholdSlider.value = String(cameraThresholdAdjustment);
                 updateCameraThresholdLabel();
             }
-            const savedCalibration = localStorage.getItem('golCameraCalibrationProfile');
-            if (savedCalibration) {
-                const parsedCalibration = JSON.parse(savedCalibration);
-                cameraCalibrationProfile = parsedCalibration?.version === 6 ? parsedCalibration : null;
-                if (!cameraCalibrationProfile) {
-                    localStorage.removeItem('golCameraCalibrationProfile');
-                }
-            }
         } catch (error) {
-            cameraCalibrationProfile = null;
+            // The app still works without local storage.
         }
 
         canvas.addEventListener('click', (event) => {
@@ -4099,12 +3892,6 @@
             cameraPickerIgnoreCloseUntil = Date.now() + 2500;
             cameraFileInput.click();
         });
-        cameraCalibrateCaptureButton.addEventListener('click', captureCameraCalibrationFrame);
-        cameraCalibrateFileButton.addEventListener('click', () => {
-            cameraPickerIgnoreCloseUntil = Date.now() + 2500;
-            cameraCalibrationInput.click();
-        });
-        cameraClearCalibrationButton.addEventListener('click', clearCameraCalibration);
         cameraApplyButton.addEventListener('click', applyCameraGrid);
         cameraThresholdSlider.addEventListener('input', () => {
             updateCameraThresholdLabel();
@@ -4116,14 +3903,6 @@
         });
         cameraFileInput.addEventListener('change', (event) => {
             loadCameraFile(event.target.files[0]);
-            event.target.value = '';
-        });
-        cameraCalibrationShotInput.addEventListener('change', (event) => {
-            loadCameraCalibrationFile(event.target.files[0]);
-            event.target.value = '';
-        });
-        cameraCalibrationInput.addEventListener('change', (event) => {
-            loadCameraCalibrationFile(event.target.files[0]);
             event.target.value = '';
         });
         patternCatalogButton.addEventListener('click', togglePatternCatalog);
@@ -4201,10 +3980,6 @@
             deferredInstallPrompt = null;
             installAppButton.hidden = true;
         });
-
-        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-            window.screen.orientation.lock('landscape').catch(() => {});
-        }
 
         if ('serviceWorker' in navigator && window.isSecureContext) {
             navigator.serviceWorker.register('sw.js').catch(() => {});
