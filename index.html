@@ -2407,7 +2407,7 @@
             cameraButton.classList.add('active');
             cameraStatus.textContent = 'Processando foto...';
 
-            loadImageFileToCanvas(file, analyzeGridImage, options);
+            loadImageFileToCanvas(file, options.analyzer || analyzeGridImage, options);
         }
 
         async function loadImageFileToCanvas(file, callback, options = {}) {
@@ -4161,6 +4161,133 @@
             return liveCount;
         }
 
+        function resizeCanvasForRecognition(sourceCanvas, maxSide) {
+            const scale = Math.min(1, maxSide / Math.max(sourceCanvas.width, sourceCanvas.height));
+            const resized = document.createElement('canvas');
+            resized.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+            resized.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+            const context = resized.getContext('2d');
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
+            context.drawImage(sourceCanvas, 0, 0, resized.width, resized.height);
+            return resized;
+        }
+
+        function getRecognitionComponents(targetGrid) {
+            const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+            const components = [];
+            const directions = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    if (!targetGrid[row][col] || visited[row][col]) continue;
+                    const stack = [[row, col]];
+                    const cells = [];
+                    visited[row][col] = true;
+
+                    while (stack.length) {
+                        const [currentRow, currentCol] = stack.pop();
+                        cells.push([currentRow, currentCol]);
+                        directions.forEach(([dr, dc]) => {
+                            const nextRow = currentRow + dr;
+                            const nextCol = currentCol + dc;
+                            if (
+                                nextRow < 0 || nextRow >= ROWS ||
+                                nextCol < 0 || nextCol >= COLS ||
+                                visited[nextRow][nextCol] ||
+                                !targetGrid[nextRow][nextCol]
+                            ) {
+                                return;
+                            }
+                            visited[nextRow][nextCol] = true;
+                            stack.push([nextRow, nextCol]);
+                        });
+                    }
+
+                    const rows = cells.map(([cellRow]) => cellRow);
+                    const cols = cells.map(([, cellCol]) => cellCol);
+                    components.push({
+                        cells,
+                        minRow: Math.min(...rows),
+                        maxRow: Math.max(...rows),
+                        minCol: Math.min(...cols),
+                        maxCol: Math.max(...cols)
+                    });
+                }
+            }
+
+            return components;
+        }
+
+        function scoreRecognitionCandidate(candidate) {
+            const targetGrid = candidate.grid;
+            const liveCount = countLiveCells(targetGrid);
+            const components = getRecognitionComponents(targetGrid);
+            let edgeLive = 0;
+            let longEdgeRun = 0;
+            let lineLike = 0;
+
+            targetGrid.forEach((rowValues, row) => {
+                rowValues.forEach((value, col) => {
+                    if (!value) return;
+                    if (row === 0 || row === ROWS - 1 || col === 0 || col === COLS - 1) {
+                        edgeLive += 1;
+                    }
+                });
+            });
+
+            components.forEach((component) => {
+                const width = component.maxCol - component.minCol + 1;
+                const height = component.maxRow - component.minRow + 1;
+                const touchesEdge = component.minRow === 0 || component.maxRow === ROWS - 1 ||
+                    component.minCol === 0 || component.maxCol === COLS - 1;
+                if (touchesEdge && component.cells.length >= 3) longEdgeRun += component.cells.length;
+                if (component.cells.length >= 4 && (width === 1 || height === 1)) lineLike += component.cells.length;
+            });
+
+            const densePenalty = Math.max(0, liveCount - 24) * 1.8;
+            const sparsePenalty = liveCount === 0 ? 30 : 0;
+            return (
+                (candidate.markerAligned ? 18 : 0) +
+                Math.min(liveCount, 18) * 0.75 -
+                edgeLive * 3.2 -
+                longEdgeRun * 2.6 -
+                lineLike * 1.8 -
+                densePenalty -
+                sparsePenalty
+            );
+        }
+
+        function analyzeCameraGridImage(sourceCanvas) {
+            const candidates = [sourceCanvas, resizeCanvasForRecognition(sourceCanvas, 960), resizeCanvasForRecognition(sourceCanvas, 720)]
+                .filter((canvas, index, list) => index === 0 || canvas.width !== list[index - 1].width || canvas.height !== list[index - 1].height)
+                .map((canvas) => {
+                    const recognition = getCameraRecognitionData(canvas);
+                    const markerAligned = Boolean(recognition.normalizedCanvas.markerAligned);
+                    const grid = buildRecognizedGridFromScores(recognition.scores, markerAligned);
+                    return {
+                        recognition,
+                        markerAligned,
+                        grid,
+                        score: scoreRecognitionCandidate({ grid, markerAligned })
+                    };
+                })
+                .sort((a, b) => b.score - a.score);
+
+            const best = candidates[0];
+            pendingCameraScores = best.recognition.scores;
+            pendingCameraMarkerAligned = best.markerAligned;
+            pendingCameraGrid = best.grid;
+            pendingCameraLiveCount = countLiveCells(best.grid);
+            cameraThresholdSlider.value = String(cameraThresholdAdjustment);
+            updateCameraThresholdLabel();
+            cameraTuning.classList.add('ready');
+            cameraApplyButton.disabled = false;
+            drawCameraPreview(pendingCameraScores, pendingCameraGrid);
+            cameraStatus.textContent =
+                'Preview com ' + pendingCameraLiveCount + ' celulas vivas. Ajuste se precisar e toque OK.';
+        }
+
         function refreshCameraRecognitionPreview() {
             if (!pendingCameraScores) return;
             pendingCameraGrid = buildRecognizedGridFromScores(pendingCameraScores, pendingCameraMarkerAligned);
@@ -4567,7 +4694,7 @@
             refreshCameraRecognitionPreview();
         });
         cameraShotInput.addEventListener('change', (event) => {
-            loadCameraFile(event.target.files[0], { maxSide: 960 });
+            loadCameraFile(event.target.files[0], { analyzer: analyzeCameraGridImage });
             event.target.value = '';
         });
         cameraFileInput.addEventListener('change', (event) => {
