@@ -2141,7 +2141,8 @@
 
             patternOverlay = analyzeCurrentGrid();
             renderPatternAnalysis(patternOverlay);
-            showPatternTextPanel();
+            patternModal.classList.remove('open');
+            patternCard.classList.add('hidden');
             hidePatternTip();
             updatePatternDetailsButton();
             drawGrid();
@@ -2898,7 +2899,20 @@
                         });
                     }
 
-                    if (touchesEdge && component.length === 1) {
+                    const rows = component.map(([componentRow]) => componentRow);
+                    const cols = component.map(([, componentCol]) => componentCol);
+                    const rowSpan = Math.max(...rows) - Math.min(...rows) + 1;
+                    const colSpan = Math.max(...cols) - Math.min(...cols) + 1;
+                    const edgeCells = component.filter(([componentRow, componentCol]) =>
+                        componentRow === 0 ||
+                        componentCol === 0 ||
+                        componentRow === ROWS - 1 ||
+                        componentCol === COLS - 1
+                    ).length;
+                    const edgeHeavy = edgeCells / component.length > 0.62;
+                    const lineLike = (rowSpan === 1 && colSpan >= 3) || (colSpan === 1 && rowSpan >= 3);
+
+                    if (touchesEdge && (component.length === 1 || lineLike || edgeHeavy)) {
                         component.forEach(([componentRow, componentCol]) => {
                             cleanedGrid[componentRow][componentCol] = 0;
                         });
@@ -3318,11 +3332,132 @@
             return best;
         }
 
+        function buildBrightGridProfile(imageData, axis, startA, endA, startB, endB) {
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            const profileLength = axis === 'x' ? width : height;
+            const profile = Array(profileLength).fill(0);
+            const a0 = Math.max(0, Math.floor(startA));
+            const a1 = Math.min(profileLength - 1, Math.ceil(endA));
+            const bLimit = axis === 'x' ? height : width;
+            const b0 = Math.max(0, Math.floor(startB));
+            const b1 = Math.min(bLimit - 1, Math.ceil(endB));
+            const count = Math.max(1, b1 - b0 + 1);
+
+            for (let a = a0; a <= a1; a++) {
+                let sum = 0;
+                for (let b = b0; b <= b1; b++) {
+                    const x = axis === 'x' ? a : b;
+                    const y = axis === 'x' ? b : a;
+                    const index = (y * width + x) * 4;
+                    const r = data[index];
+                    const g = data[index + 1];
+                    const blue = data[index + 2];
+                    const luma = 0.299 * r + 0.587 * g + 0.114 * blue;
+                    const chroma = Math.max(r, g, blue) - Math.min(r, g, blue);
+                    const bright = luma > 128 && chroma < 95 ? 1 : Math.max(0, Math.min(1, (luma - 92) / 88));
+                    sum += bright;
+                }
+                profile[a] = sum / count;
+            }
+
+            return smoothProfile(profile, 4);
+        }
+
+        function findBrightGridAxis(profile, expectedStart, expectedEnd, imageLimit) {
+            const expectedSize = expectedEnd - expectedStart;
+            const center = Math.round((expectedStart + expectedEnd) / 2);
+            const threshold = 0.34;
+            const maxGap = Math.max(6, Math.round(expectedSize * 0.018));
+            const minEdge = Math.max(0, Math.round(expectedStart - expectedSize * 0.13));
+            const maxEdge = Math.min(imageLimit - 1, Math.round(expectedEnd + expectedSize * 0.13));
+
+            let left = center;
+            let gap = 0;
+            for (let index = center; index >= minEdge; index--) {
+                if (profile[index] >= threshold) {
+                    left = index;
+                    gap = 0;
+                } else {
+                    gap += 1;
+                    if (gap > maxGap) break;
+                }
+            }
+
+            let right = center;
+            gap = 0;
+            for (let index = center; index <= maxEdge; index++) {
+                if (profile[index] >= threshold) {
+                    right = index;
+                    gap = 0;
+                } else {
+                    gap += 1;
+                    if (gap > maxGap) break;
+                }
+            }
+
+            const size = right - left;
+            if (size < expectedSize * 0.88 || size > expectedSize * 1.08) {
+                return null;
+            }
+
+            const blend = 0.28;
+            const blendedLeft = left * (1 - blend) + expectedStart * blend;
+            const blendedRight = right * (1 - blend) + expectedEnd * blend;
+            return {
+                start: Math.max(0, Math.min(imageLimit - 2, blendedLeft)),
+                end: Math.max(2, Math.min(imageLimit, blendedRight))
+            };
+        }
+
         function refineMarkerGridBounds(imageData, approximateBounds) {
             const width = imageData.width;
             const height = imageData.height;
-            const padX = Math.max(18, (approximateBounds.right - approximateBounds.left) * 0.04);
-            const padY = Math.max(18, (approximateBounds.bottom - approximateBounds.top) * 0.04);
+            const expectedWidth = approximateBounds.right - approximateBounds.left;
+            const expectedHeight = approximateBounds.bottom - approximateBounds.top;
+            const padX = Math.max(22, expectedWidth * 0.08);
+            const padY = Math.max(22, expectedHeight * 0.08);
+            const brightXProfile = buildBrightGridProfile(
+                imageData,
+                'x',
+                approximateBounds.left - padX,
+                approximateBounds.right + padX,
+                approximateBounds.top + expectedHeight * 0.06,
+                approximateBounds.bottom - expectedHeight * 0.06
+            );
+            const brightX = findBrightGridAxis(brightXProfile, approximateBounds.left, approximateBounds.right, width);
+            const xLeft = brightX ? brightX.start : approximateBounds.left;
+            const xRight = brightX ? brightX.end : approximateBounds.right;
+            const brightYProfile = buildBrightGridProfile(
+                imageData,
+                'y',
+                approximateBounds.top - padY,
+                approximateBounds.bottom + padY,
+                xLeft + expectedWidth * 0.06,
+                xRight - expectedWidth * 0.06
+            );
+            const brightY = findBrightGridAxis(brightYProfile, approximateBounds.top, approximateBounds.bottom, height);
+            const yTop = brightY ? brightY.start : approximateBounds.top;
+            const yBottom = brightY ? brightY.end : approximateBounds.bottom;
+            const brightBounds = {
+                left: Math.max(0, Math.min(width - 10, xLeft)),
+                top: Math.max(0, Math.min(height - 10, yTop)),
+                right: Math.min(width, Math.max(10, xRight)),
+                bottom: Math.min(height, Math.max(10, yBottom))
+            };
+
+            const brightWidth = brightBounds.right - brightBounds.left;
+            const brightHeight = brightBounds.bottom - brightBounds.top;
+            if (
+                brightWidth >= expectedWidth * 0.88 &&
+                brightWidth <= expectedWidth * 1.08 &&
+                brightHeight >= expectedHeight * 0.88 &&
+                brightHeight <= expectedHeight * 1.08
+            ) {
+                return brightBounds;
+            }
+
             const xProfile = buildDarkLineProfile(
                 imageData,
                 'x',
@@ -3332,25 +3467,25 @@
                 approximateBounds.bottom + padY
             );
             const xAxis = findRegularGridAxis(xProfile, approximateBounds.left, approximateBounds.right, COLS, padX * 1.25, 0.08);
-            const xLeft = xAxis && xAxis.score > 0.12 ? xAxis.start : approximateBounds.left;
-            const xRight = xAxis && xAxis.score > 0.12 ? xAxis.end : approximateBounds.right;
+            const lineXLeft = xAxis && xAxis.score > 0.12 ? xAxis.start : approximateBounds.left;
+            const lineXRight = xAxis && xAxis.score > 0.12 ? xAxis.end : approximateBounds.right;
             const yProfile = buildDarkLineProfile(
                 imageData,
                 'y',
                 approximateBounds.top - padY,
                 approximateBounds.bottom + padY,
-                xLeft - padX,
-                xRight + padX
+                lineXLeft - padX,
+                lineXRight + padX
             );
             const yAxis = findRegularGridAxis(yProfile, approximateBounds.top, approximateBounds.bottom, ROWS, padY * 1.25, 0.08);
-            const yTop = yAxis && yAxis.score > 0.12 ? yAxis.start : approximateBounds.top;
-            const yBottom = yAxis && yAxis.score > 0.12 ? yAxis.end : approximateBounds.bottom;
+            const lineYTop = yAxis && yAxis.score > 0.12 ? yAxis.start : approximateBounds.top;
+            const lineYBottom = yAxis && yAxis.score > 0.12 ? yAxis.end : approximateBounds.bottom;
 
             return {
-                left: Math.max(0, Math.min(width - 10, xLeft)),
-                top: Math.max(0, Math.min(height - 10, yTop)),
-                right: Math.min(width, Math.max(10, xRight)),
-                bottom: Math.min(height, Math.max(10, yBottom))
+                left: Math.max(0, Math.min(width - 10, lineXLeft)),
+                top: Math.max(0, Math.min(height - 10, lineYTop)),
+                right: Math.min(width, Math.max(10, lineXRight)),
+                bottom: Math.min(height, Math.max(10, lineYBottom))
             };
         }
 
