@@ -1,173 +1,187 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Card GOL Rulebook Fisico</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
-body{margin:0;background:#222;font-family:Arial,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:#222;font-family:Arial,sans-serif;color:#171717;font-size:10pt;line-height:1.25}
 .toolbar{position:sticky;top:0;background:#111;padding:10px}
 button{padding:10px 16px;background:#333;color:#fff;border:none;border-radius:8px}
-.page{width:210mm;height:297mm;background:#fff;margin:20px auto;padding:14mm;box-sizing:border-box;box-shadow:0 0 12px rgba(0,0,0,.3)}
-.box{border:1px solid #ccc;border-radius:10px;padding:4mm;margin-top:2mm}
-table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:6px}
-@media print {.toolbar{display:none}.page{margin:0;box-shadow:none;page-break-after:always}body{background:#fff}}
+.page{position:relative;width:148mm;min-height:210mm;background:#fff;margin:20px auto;padding:9mm 10mm 13mm;box-shadow:0 0 12px rgba(0,0,0,.3)}
+.page::after{content:"Página " attr(data-page);position:absolute;left:10mm;right:10mm;bottom:5mm;text-align:center;font-size:8pt;color:#666}
+h1{font-size:20pt;line-height:1.05;margin:0 0 3mm}
+h2{font-size:13pt;line-height:1.1;margin:4mm 0 1.5mm;border-bottom:1px solid #bbb;padding-bottom:1mm}
+p{margin:1.5mm 0}
+ul,ol{margin:1.5mm 0;padding-left:6mm}
+li{margin:.7mm 0}
+.box{border:1px solid #aaa;border-radius:6px;padding:2.5mm;margin:2mm 0;background:#f7f7f7}
+table{border-collapse:collapse;width:100%;font-size:8.5pt}
+td,th{border:1px solid #aaa;padding:1.1mm 1.5mm;text-align:left}
+th{background:#ececec}
+.deck-grid{display:grid;grid-template-columns:1fr 1fr;gap:4mm;align-items:start}
+.deck-grid h2{margin-top:0}
+.totals{display:flex;justify-content:space-between;gap:4mm;margin-top:3mm}
+.totals p{margin:0}
+.action-icon{display:inline-block;width:5mm;text-align:center;margin-right:1mm;font-size:12pt}
+.action-examples{display:grid;grid-template-columns:repeat(4,1fr);gap:1mm;margin-top:1mm}
+.action-example{text-align:center;font-size:7.5pt}
+.action-example b{display:block;margin-bottom:.8mm}
+.action-example svg{width:16mm;height:16mm;display:block;margin:auto}
+.action-legend{font-size:7.5pt;margin:1mm 0}
+.action-legend span{white-space:nowrap;margin-right:2mm}
+.legend-cell{display:inline-block;width:3mm;height:3mm;vertical-align:-.5mm;margin-right:.5mm}
+.end-game{margin-top:4mm}
+.page[data-page="2"]{font-size:9pt;line-height:1.18}
+.page[data-page="2"] h2{margin:2.5mm 0 1mm}
+.page[data-page="2"] ul,.page[data-page="2"] ol{margin:1mm 0}
+.page[data-page="2"] li{margin:.4mm 0}
+.page[data-page="2"] .box{padding:2mm;margin:1.5mm 0}
+.page[data-page="3"]{font-size:9.2pt;line-height:1.18}
+.page[data-page="3"] h2{font-size:12.5pt;margin:2.2mm 0 .8mm}
+.page[data-page="3"] p{margin:1mm 0}
+.page[data-page="3"] ul,.page[data-page="3"] ol{margin:1mm 0;padding-left:5.5mm}
+.page[data-page="3"] li{margin:.5mm 0}
+.page[data-page="3"] .box{padding:1.8mm;margin:1.2mm 0}
+.page[data-page="3"] .action-example svg{width:16mm;height:16mm}
+.page[data-page="3"] .action-legend{margin:1mm 0}
+@page{size:A5 portrait;margin:0}
+@media print{
+  body{background:#fff}
+  .toolbar{display:none}
+  .page{width:148mm;height:210mm;min-height:210mm;margin:0;padding:9mm 10mm 13mm;box-shadow:none;break-after:page;page-break-after:always;overflow:hidden}
+  .page:last-child{break-after:auto;page-break-after:auto}
+  h1,h2{break-after:avoid;page-break-after:avoid}
+  .box,table{break-inside:avoid;page-break-inside:avoid}
+}
 </style></head><body>
 <div class='toolbar'><button onclick='window.print()'>Exportar PDF</button></div>
 
-<div class='page'>
+<div class='page' data-page='1'>
 <h1>Card GOL (Game of Life)</h1>
-<p>Modo físico compartilhado sem iteração automática.</p>
 <h2>O que é Conway's Game of Life?</h2>
 <p>Um autômato celular onde células vivas e mortas seguem regras simples.</p>
 <div class='box'><b>Solidão:</b> menos de 2 vizinhos → morre<br><b>Sobrevivência:</b> 2 ou 3 vizinhos → continua viva<br><b>Superpopulação:</b> mais de 3 vizinhos → morre<br><b>Nascimento:</b> exatamente 3 vizinhos → nasce</div>
 <h2>Objetivo</h2>
-<p>Resgatar padrões da sua mão criando exatamente o padrão presente no grid compartilhado atual. O jogo termina quando alguém resgata 5 padrões.</p>
+<p>Resgatar padrões da sua mão identificando-os no grid atual. O fim do jogo é acionado quando alguém resgata 5 padrões. Vence quem obtiver mais pontos, somando as células vivas dos padrões resgatados.</p>
 <h2>Componentes</h2>
-<ul><li>Grid compartilhado 20×14 (4 quadrantes 10×7)</li><li>Baralho de padrões</li><li>Baralho de ações</li><li>Dado D6</li></ul>
-</div>
+<ul><li>Grid 20×14 (4 quadrantes 10×7)</li><li>100 cubos pretos representando as células vivas</li><li>3 cubos brancos para marcar os lados par e ímpar</li><li>Baralho de padrões</li><li>Baralho de ações</li><li>Dado D6</li></ul>
 
-<div class='page'>
 <h2>Preparação</h2>
 <ol>
-<li>Monte o grid compartilhado dividido em 4 quadrantes numerados de 1 a 4.</li>
-<li>Cada jogador compra 5 padrões.</li>
+<li>Monte o grid dividido em 4 quadrantes.</li>
+<li>Cada jogador compra 5 cartas de padrão.</li>
 <li>Escolha aleatoriamente o primeiro jogador.</li>
-<li>O primeiro jogador pega 12 peças e as joga sobre o grid.</li>
-<li>As peças são posicionadas onde caírem; se encaixarem em múltiplas posições válidas, o jogador escolhe a posição final.</li>
+<li>O primeiro jogador escolhe se os lados par e ímpar serão definidos pelas laterais horizontais ou verticais do grid.</li>
+<li>Coloque os 3 cubos brancos em laterais opostas: 2 cubos em uma lateral para marcar o lado par e 1 cubo na lateral oposta para marcar o lado ímpar.</li>
+<li>O primeiro jogador pega 12 cubos pretos e os joga sobre o grid.</li>
+<li>Os cubos pretos são posicionados onde caírem; se estiverem sobre múltiplas células do grid, o jogador escolhe em qual delas posicioná-los.</li>
 </ol>
+</div>
 
+<div class='page' data-page='2'>
 <h2>Quadrantes</h2>
 <div class='box'>
-Os quadrantes são numerados de 1 a 4.<br>
-No início do turno role o D6.<br>
-Resultado par → escolha um dos quadrantes pares.<br>
-Resultado ímpar → escolha um dos quadrantes ímpares.<br>
-Todas as ações daquele turno devem afetar o quadrante escolhido.
-</div>
+Cada quadrante pertence ao lado par ou ao lado ímpar, conforme a posição dos cubos brancos.<br>
+O quadrante do turno é escolhido de acordo com o resultado do D6:<br>
+Resultado par no D6 → selecione um dos quadrantes do lado par.<br>
+Resultado ímpar no D6 → selecione um dos quadrantes do lado ímpar.<br>
+Todas as ações daquele turno devem afetar o quadrante selecionado.
 </div>
 
-<div class='page'>
 <h2>Turno do Jogador</h2>
 
 <ol>
-<li>Determine o quadrante.</li>
+<li>Role o D6.</li>
+<li>Selecione o quadrante entre os dois disponíveis no lado indicado pelo resultado.</li>
 <li>Compre 2 cartas de ação.</li>
-<li>Escolha UMA para executar.</li>
-<li>Descarte a outra.</li>
-<li>Após executar a ação, descarte a carta usada.</li>
+<li>Escolha uma para executar.</li>
+<li>Descarte a outra e, após a ação, descarte também a carta usada.</li>
 </ol>
 
 <h2>Regras das ações</h2>
 
 <ul>
-<li>Swap Grid: o quadrante escolhido deve participar da troca.</li>
-<li>Ambos quadrantes envolvidos podem ser girados.</li>
-<li>Clear Grid sempre limpa o quadrante sorteado.</li>
-<li>Add/Remove devem ocorrer dentro do quadrante sorteado.</li>
+<li><i class="action-icon fa-solid fa-arrows-rotate"></i><b>Trocar Quadrantes:</b> o quadrante selecionado deve participar da troca.
+  <ul><li>Ambos os quadrantes envolvidos podem ser girados.</li></ul>
+</li>
+<li><i class="action-icon fa-solid fa-trash"></i><b>Limpar Quadrante:</b> remova todas as células vivas do quadrante selecionado.</li>
+<li><i class="action-icon fa-solid fa-hand-point-down"></i><b>Adicionar:</b> adicione células vivas no quadrante selecionado.</li>
+<li><i class="action-icon fa-solid fa-hand-point-up"></i><b>Remover:</b> remova células vivas do quadrante selecionado.</li>
 </ul>
 
 <div class='box'>
-Ao usar Add ou Remove, role o dado.<br>
-Você pode executar até aquela quantidade, mas pelo menos uma vez se possível.
+Ao selecionar uma ação <b>Adicionar</b> ou <b>Remover</b>, role o D6.<br>
+Você pode executar a ação até o número de vezes indicado pelo dado. Caso exista ao menos uma execução válida, você deve realizá-la pelo menos uma vez.
 </div>
 
 <p>Se nenhuma das duas cartas puder ser executada naquele quadrante, descarte ambas e passe o turno.</p>
 
-<p>Exceção: se o quadrante estiver completamente vazio, antes das ações você pode colocar 1 célula viva em qualquer posição do quadrante.</p>
+<p><b>Exceção:</b> se o quadrante estiver completamente vazio, você pode escolher colocar 1 célula viva em qualquer posição dele. Se fizer isso, deverá executar em seguida uma ação <b>Adicionar</b> usando essa célula como referência.</p>
+
+<h2>Exemplos das Ações</h2>
+<p class="action-legend"><span><svg class="legend-cell" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1" fill="#111" stroke="#777"/></svg> célula viva existente</span><span><svg class="legend-cell" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1" fill="#bdbdbd" stroke="#777"/></svg> colocação possível</span></p>
+<div class="action-examples">
+<div class="action-example"><b>Adicionar Diagonal</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#111"/><g fill="#bdbdbd"><rect x="2" y="2" width="8" height="8" rx="2"/><rect x="26" y="2" width="8" height="8" rx="2"/><rect x="2" y="26" width="8" height="8" rx="2"/><rect x="26" y="26" width="8" height="8" rx="2"/></g></svg></div>
+<div class="action-example"><b>Adicionar Ortogonal</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#111"/><g fill="#bdbdbd"><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="26" y="14" width="8" height="8" rx="2"/><rect x="14" y="26" width="8" height="8" rx="2"/></g></svg></div>
+<div class="action-example"><b>Adicionar Isolada</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#bdbdbd"/></svg></div>
+<div class="action-example"><b>Adicionar Adjacente</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#111"/><g fill="#bdbdbd"><rect x="2" y="2" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="26" y="2" width="8" height="8" rx="2"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="26" y="14" width="8" height="8" rx="2"/><rect x="2" y="26" width="8" height="8" rx="2"/><rect x="14" y="26" width="8" height="8" rx="2"/><rect x="26" y="26" width="8" height="8" rx="2"/></g></svg></div>
+</div>
 
 </div>
 
-<div class='page'>
+<div class='page' data-page='3'>
+<h2>Exemplos: Remover</h2>
+<p class="action-legend"><span><svg class="legend-cell" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1" fill="#111" stroke="#777"/></svg> célula viva existente</span><span><svg class="legend-cell" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1" fill="#bdbdbd" stroke="#777"/></svg> remoção possível</span><span>× remover</span></p>
+<div class="action-examples">
+<div class="action-example"><b>Diagonal</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#111"/><g fill="#bdbdbd"><rect x="2" y="2" width="8" height="8" rx="2"/><rect x="26" y="2" width="8" height="8" rx="2"/><rect x="2" y="26" width="8" height="8" rx="2"/><rect x="26" y="26" width="8" height="8" rx="2"/></g><g stroke="#111" stroke-width="1.5"><path d="m3 3 6 6m0-6L3 9m24-6 6 6m0-6-6 6M3 27l6 6m0-6-6 6m24-6 6 6m0-6-6 6"/></g></svg></div>
+<div class="action-example"><b>Ortogonal</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#111"/><g fill="#bdbdbd"><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="26" y="14" width="8" height="8" rx="2"/><rect x="14" y="26" width="8" height="8" rx="2"/></g><g stroke="#111" stroke-width="1.5"><path d="M15 3l6 6m0-6-6 6M3 15l6 6m0-6-6 6M27 15l6 6m0-6-6 6M15 27l6 6m0-6-6 6"/></g></svg></div>
+<div class="action-example"><b>Isolada</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#bdbdbd"/><path d="m15 15 6 6m0-6-6 6" stroke="#111" stroke-width="1.5"/></svg></div>
+<div class="action-example"><b>Adjacente</b><svg viewBox="0 0 36 36"><path d="M.5.5h35v35H.5zM12 0v36M24 0v36M0 12h36M0 24h36" fill="#fff" stroke="#777"/><rect x="14" y="14" width="8" height="8" rx="2" fill="#111"/><g fill="#bdbdbd"><rect x="2" y="2" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/><rect x="26" y="2" width="8" height="8" rx="2"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="26" y="14" width="8" height="8" rx="2"/><rect x="2" y="26" width="8" height="8" rx="2"/><rect x="14" y="26" width="8" height="8" rx="2"/><rect x="26" y="26" width="8" height="8" rx="2"/></g><g stroke="#111" stroke-width="1.5"><path d="M3 3l6 6m0-6L3 9M15 3l6 6m0-6-6 6M27 3l6 6m0-6-6 6M3 15l6 6m0-6-6 6M27 15l6 6m0-6-6 6M3 27l6 6m0-6-6 6M15 27l6 6m0-6-6 6M27 27l6 6m0-6-6 6"/></g></svg></div>
+</div>
+
 <h2>Resgatando Padrões</h2>
 
-<p>
-
-Após concluir sua ação, você pode resgatar padrões.
-
-</p>
-
+<p>Após concluir sua ação, o jogador ativo tem prioridade e pode resgatar um ou mais padrões.</p>
+<p>O resgate considera todo o grid, não apenas o quadrante ativo. Um padrão pode ser formado por células vivas presentes em um ou mais quadrantes.</p>
 <ul>
-
-<li>
-
-Você pode resgatar múltiplos padrões.
-
-</li>
-
-<li>
-
-Os resgates acontecem sequencialmente.
-
-</li>
-
-<li>
-
-Ao resgatar, remova as células utilizadas daquele padrão.
-
-</li>
-
-<li>
-
-O próximo padrão só pode ser resgatado se continuar existindo após a remoção anterior.
-
-</li>
-
+<li>Os resgates acontecem um de cada vez.</li>
+<li>Revele o padrão, coloque a carta resgatada em sua área de pontuação e remova do grid as células utilizadas.</li>
+<li>Cada próximo resgate só acontece se o padrão ainda existir após todas as remoções anteriores.</li>
+<li>Ao terminar seus resgates, o jogador ativo compra cartas de padrão até voltar a ter 5 na mão. Essa compra encerra seu turno; depois dela, o jogador ativo não pode resgatar outros padrões naquele turno.</li>
 </ul>
 
-<p>
+<h2>Resgate Fora do Turno (Opcional)</h2>
+<p>Durante o turno do jogador ativo, cada jogador não ativo pode declarar <b>no máximo 1 padrão</b> para resgatar. A declaração deve ser explícita: anuncie o padrão e aponte exatamente onde ele está no grid. Só é permitido declarar um padrão que exista naquele momento.</p>
 
-Ao resgatar:
-
-</p>
-
-<ol>
-
-<li>
-
-Revele o padrão.
-
-</li>
-
-<li>
-
-Reserve a carta pontuada.
-
-</li>
-
-<li>
-
-Remova as células daquele padrão do grid.
-
-</li>
-
-</ol>
-
-<p>
-
-No final do turno, compre cartas de padrão até voltar a possuir 5 padrões na mão.
-
-</p>
+<p>A carta de padrão reservada permanece separada até sua vez de resolver o resgate. A ordem dos resgates fora do turno é a ordem em que as declarações válidas foram feitas.</p>
 
 <div class="box">
+<b>O momento da declaração importa:</b> você pode esperar o jogador ativo concluir completamente seu turno e declarar antes do próximo turno começar. Declarar antes garante prioridade sobre os outros jogadores, mas pode influenciar decisões ainda não anunciadas do jogador ativo, que poderá resgatar outros padrões, remover células necessárias e tornar o padrão declarado inválido.
+</div>
 
-Padrões comprados naquele turno NÃO podem ser resgatados naquele mesmo turno.
+<p>Após o encerramento do turno do jogador ativo:</p>
+<ol>
+<li>Antes do próximo turno começar, aceite as últimas declarações válidas.</li>
+<li>Resolva os resgates declarados na ordem das declarações, desde que cada padrão apontado ainda exista no grid.</li>
+<li>Quem concluir um resgate fora do turno compra imediatamente 1 carta de padrão.</li>
+</ol>
 
-Ou seja, apenas padrões que estavam na sua mão antes da recompra podem ser resgatados.
+<div class="box">
+Se o padrão declarado deixar de existir antes da sua vez, o resgate falha, nenhuma carta é comprada e a carta de padrão reservada retorna à mão desse jogador, agora conhecida por todos.
+</div>
 
 </div>
 
+<div class='page' data-page='4'>
 <h2>Pontuação</h2>
-
-<div class='box'>
-Cada padrão vale exatamente a quantidade de células vivas presentes nele.<br>
-Sua pontuação final é a soma das células vivas de todos os padrões resgatados.
-</div>
+<p>Cada padrão vale exatamente a quantidade de células vivas presentes nele. Sua pontuação final é a soma das células vivas de todos os padrões resgatados.</p>
 
 <h2>Fim do jogo</h2>
-<p>Quando alguém resgatar o quinto padrão, finalize a rodada atual e conte os pontos.</p>
+<p>Quando alguém resgatar o quinto padrão, isso aciona o fim do jogo. Termine o turno do jogador ativo e conte os pontos.</p>
 
-</div>
+<h2>Composição dos Baralhos</h2>
 
-<div class='page'>
-<h1>Distribuição Atual do Deck</h1>
-
+<div class="deck-grid">
+<section>
 <h2>Padrões — 48 cartas</h2>
 <table>
 <tr><th>Carta</th><th>Qtd</th></tr>
@@ -183,24 +197,38 @@ Sua pontuação final é a soma das células vivas de todos os padrões resgatad
 <tr><td>Jam</td><td>6</td></tr>
 <tr><td>Loaf</td><td>2</td></tr>
 </table>
+</section>
 
-<h2>Actions — 28 cartas</h2>
+<section>
+<h2>Ações — 28 cartas</h2>
 <table>
 <tr><th>Tipo</th><th>Qtd</th></tr>
-<tr><td>Add Diagonal</td><td>4</td></tr>
-<tr><td>Add Orthogonal</td><td>4</td></tr>
-<tr><td>Add Isolated</td><td>4</td></tr>
-<tr><td>Add Any</td><td>4</td></tr>
-<tr><td>Remove Diagonal</td><td>1</td></tr>
-<tr><td>Remove Orthogonal</td><td>1</td></tr>
-<tr><td>Remove Isolated</td><td>1</td></tr>
-<tr><td>Remove Any</td><td>1</td></tr>
-<tr><td>Swap Grid</td><td>4</td></tr>
-<tr><td>Clear Grid</td><td>4</td></tr>
+<tr><td>Adicionar Diagonal</td><td>4</td></tr>
+<tr><td>Adicionar Ortogonal</td><td>4</td></tr>
+<tr><td>Adicionar Isolada</td><td>4</td></tr>
+<tr><td>Adicionar Adjacente</td><td>4</td></tr>
+<tr><td>Remover Diagonal</td><td>1</td></tr>
+<tr><td>Remover Ortogonal</td><td>1</td></tr>
+<tr><td>Remover Isolada</td><td>1</td></tr>
+<tr><td>Remover Adjacente</td><td>1</td></tr>
+<tr><td>Trocar Quadrantes</td><td>4</td></tr>
+<tr><td>Limpar Quadrante</td><td>4</td></tr>
 </table>
-
-<p><b>Total Pattern Cards:</b> 48</p>
-<p><b>Total Action Cards:</b> 28</p>
+</section>
 </div>
 
+<div class="totals">
+<p><b>Total de cartas de padrão:</b> 48</p>
+<p><b>Total de cartas de ação:</b> 28</p>
+</div>
+
+</div>
+
+<script>
+const bookletOrder = [4, 1, 2, 3];
+const bookletPages = new Map(
+  [...document.querySelectorAll('.page')].map(page => [Number(page.dataset.page), page])
+);
+bookletOrder.forEach(pageNumber => document.body.append(bookletPages.get(pageNumber)));
+</script>
 </body></html>
