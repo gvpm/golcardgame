@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Capa Card GOL - A4</title>
+<style>
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 210mm;
+  height: 297mm;
+  margin: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+svg {
+  display: block;
+  width: 210mm;
+  height: 297mm;
+}
+</style>
+</head>
+<body>
+<svg viewBox="0 0 210 297" xmlns="http://www.w3.org/2000/svg" aria-label="Grid A4 com glider centralizado">
+  <rect width="210" height="297" fill="#fff"/>
+  <g id="grid-lines" fill="none" stroke="#444" stroke-width="0.45" shape-rendering="crispEdges"/>
+
+  <!-- Glider 3x3 centralizado; cada célula mede 10 mm. -->
+  <g fill="#111">
+    <rect x="91" y="154.5" width="8" height="8" rx="2"/>
+    <rect x="91" y="144.5" width="8" height="8" rx="2"/>
+    <rect x="91" y="134.5" width="8" height="8" rx="2"/>
+    <rect x="101" y="154.5" width="8" height="8" rx="2"/>
+    <rect x="111" y="144.5" width="8" height="8" rx="2"/>
+  </g>
+</svg>
+<script>
+const grid = document.getElementById("grid-lines");
+const svgNS = "http://www.w3.org/2000/svg";
+
+function addLine(x1, y1, x2, y2) {
+  const line = document.createElementNS(svgNS, "line");
+  line.setAttribute("x1", x1);
+  line.setAttribute("y1", y1);
+  line.setAttribute("x2", x2);
+  line.setAttribute("y2", y2);
+  grid.appendChild(line);
+}
+
+for (let x = 0; x <= 210; x += 10) addLine(x, 0, x, 297);
+for (let y = 3.5; y <= 297; y += 10) addLine(0, y, 210, y);
+</script>
+</body>
+</html>
