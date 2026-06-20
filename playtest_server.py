@@ -54,7 +54,7 @@ DEFAULT_CONFIG = {
     "finishActiveTurnOnly": True,
     "actionPolicy": "greedy",
     "rescuePolicy": "all",
-    "quadrantPolicy": "best",
+    "quadrantPolicy": "random",
     "recordTimeline": True,
     "maxRecordedGames": 20,
     "sweep": {
@@ -321,6 +321,31 @@ def cards_payload() -> dict[str, Any]:
         if "_t" in card_id
     }
     return cards
+
+
+def deck_options_payload() -> dict[str, Any]:
+    cards = load_json("cards.json")
+    catalog = build_pattern_card_catalog(cards)
+    return {
+        "patterns": cards.get("patterns", {}),
+        "patternCards": {
+            card_id: {
+                "id": card_id,
+                "family": variant.family_id,
+                "name": variant.name,
+                "label": variant.label,
+                "category": variant.category,
+                "phase": variant.phase,
+                "phaseTotal": variant.phase_total,
+                "mirrored": variant.mirrored,
+                "pattern": [list(row) for row in variant.pattern],
+                "points": len(variant.live),
+            }
+            for card_id, variant in catalog.items()
+            if "_t" in card_id
+        },
+        "actions": cards.get("actions", []),
+    }
 
 
 def expand_deck(entries: list[dict[str, Any]], rng: random.Random) -> list[str]:
@@ -681,14 +706,16 @@ class Simulator:
         timeline: list[dict[str, Any]] | None = None,
     ) -> None:
         player = state.players[player_index]
-        quadrant = self.choose_quadrant(state, player_index)
+        quadrant, quadrant_roll, quadrant_candidates = self.choose_quadrant(state, player_index)
         drawn_actions = draw_many(state.action_deck, state.action_discard, self.rng, 2)
         if timeline is not None:
+            parity = "par" if quadrant_roll % 2 == 0 else "impar"
+            allowed = ", ".join(f"Q{item + 1}" for item in quadrant_candidates)
             timeline.append(
                 self.snapshot_step(
                     state,
                     "turn-start",
-                    f"P{player_index + 1} inicia turno no Q{quadrant + 1}; compra ações: {', '.join(drawn_actions) or 'nenhuma'}",
+                    f"P{player_index + 1} rola {quadrant_roll} ({parity}), permitido {allowed}, joga no Q{quadrant + 1}; compra ações: {', '.join(drawn_actions) or 'nenhuma'}",
                     active_player=player_index,
                     quadrant=quadrant,
                     action_draw=drawn_actions,
@@ -746,14 +773,14 @@ class Simulator:
         if self.config.get("offTurnRescue") and not state.winner_triggered:
             self.rescue_off_turn(state, player_index, log, timeline)
 
-    def choose_quadrant(self, state: GameState, player_index: int) -> int:
+    def choose_quadrant(self, state: GameState, player_index: int) -> tuple[int, int, list[int]]:
         die = self.rng.randint(1, 6)
         orientation = "vertical"
         even_quads = [0, 2] if orientation == "vertical" else [0, 1]
         odd_quads = [1, 3] if orientation == "vertical" else [2, 3]
         candidates = even_quads if die % 2 == 0 else odd_quads
         if self.config.get("quadrantPolicy") != "best":
-            return self.rng.choice(candidates)
+            return self.rng.choice(candidates), die, candidates
 
         best_score = -1
         best_quads: list[int] = []
@@ -767,7 +794,7 @@ class Simulator:
                 best_quads = [quadrant]
             elif score == best_score:
                 best_quads.append(quadrant)
-        return self.rng.choice(best_quads)
+        return self.rng.choice(best_quads), die, candidates
 
     def choose_action(
         self,
@@ -803,8 +830,6 @@ class Simulator:
     ) -> float:
         if action_id.startswith("add-"):
             candidates = self.action_candidates(state.grid, quadrant, action_id)
-            if not candidates and self.is_quadrant_empty(state.grid, quadrant):
-                candidates = [(row, col) for row, col in self.cells_in_quadrant(quadrant) if not state.grid[row][col]]
             if not candidates:
                 return -999999.0
             best_cell_score = max(self.score_add_cell(state.grid, player, row, col) for row, col in candidates[:80])
@@ -836,7 +861,7 @@ class Simulator:
         if action_id == "swap-grid-tiles":
             return True
         if action_id.startswith("add-"):
-            return bool(self.action_candidates(grid, quadrant, action_id)) or self.is_quadrant_empty(grid, quadrant)
+            return bool(self.action_candidates(grid, quadrant, action_id))
         if action_id.startswith("remove-"):
             return bool(self.action_candidates(grid, quadrant, action_id))
         return False
@@ -857,13 +882,7 @@ class Simulator:
             other = self.rng.choice([q for q in QUADRANTS if q != quadrant])
             return self.swap_quadrants(grid, quadrant, other)
 
-        if action_id.startswith("add-") and self.is_quadrant_empty(grid, quadrant):
-            row, col = self.rng.choice(self.cells_in_quadrant(quadrant))
-            changed.append({"row": row, "col": col, "before": 0, "after": 1, "reason": "empty-quadrant-seed"})
-            grid[row][col] = 1
-
         repeats = self.rng.randint(1, 6) if action_id.startswith(("add-", "remove-")) else 1
-        did_once = False
         for _ in range(repeats):
             candidates = self.action_candidates(grid, quadrant, action_id)
             if not candidates:
@@ -874,13 +893,6 @@ class Simulator:
             after = grid[row][col]
             if before != after:
                 changed.append({"row": row, "col": col, "before": before, "after": after, "reason": action_id})
-            did_once = True
-        if not did_once and action_id.startswith("add-"):
-            candidates = [(row, col) for row, col in self.cells_in_quadrant(quadrant) if not grid[row][col]]
-            if candidates:
-                row, col = self.rng.choice(candidates)
-                changed.append({"row": row, "col": col, "before": 0, "after": 1, "reason": action_id})
-                grid[row][col] = 1
         return changed
 
     def choose_action_cell(
@@ -977,6 +989,19 @@ class Simulator:
                 best = max(best, matched * matched * multiplier)
         return best
 
+    def has_adjacent_live_cell(self, grid: list[list[int]], row: int, col: int) -> bool:
+        for d_row, d_col in ACTION_OFFSETS["any"]:
+            target_row = row + d_row
+            target_col = col + d_col
+            if self.config.get("wrapPatterns"):
+                target_row %= ROWS
+                target_col %= COLS
+            elif target_row < 0 or target_row >= ROWS or target_col < 0 or target_col >= COLS:
+                continue
+            if grid[target_row][target_col]:
+                return True
+        return False
+
     def action_candidates(self, grid: list[list[int]], quadrant: int, action_id: str) -> list[tuple[int, int]]:
         mode, _, kind = action_id.partition("-")
         if kind not in ("diagonal", "orthogonal", "isolated", "any"):
@@ -986,9 +1011,10 @@ class Simulator:
         if kind == "isolated":
             for row in range(r0, r1):
                 for col in range(c0, c1):
-                    if mode == "add" and not grid[row][col]:
+                    has_neighbor = self.has_adjacent_live_cell(grid, row, col)
+                    if mode == "add" and not grid[row][col] and not has_neighbor:
                         targets.add((row, col))
-                    elif mode == "remove" and grid[row][col]:
+                    elif mode == "remove" and grid[row][col] and not has_neighbor:
                         targets.add((row, col))
             return list(targets)
 
@@ -1439,8 +1465,40 @@ class Job:
         self.results: list[dict[str, Any]] = []
         self.scenarios: list[dict[str, Any]] = []
         self.summary: dict[str, Any] = {}
+        self.pause_requested = False
+        self.cancel_requested = False
+
+    def pause(self) -> None:
+        if self.status in ("queued", "running"):
+            self.pause_requested = True
+            self.status = "paused"
+
+    def resume(self) -> None:
+        if self.status == "paused":
+            self.pause_requested = False
+            self.status = "running"
+
+    def cancel(self) -> None:
+        if self.status in ("queued", "running", "paused"):
+            self.cancel_requested = True
+            self.pause_requested = False
+            self.status = "cancelled"
+
+    def wait_if_paused(self) -> None:
+        while self.pause_requested and not self.cancel_requested:
+            time.sleep(0.15)
+
+    def should_stop(self) -> bool:
+        if self.cancel_requested:
+            self.status = "cancelled"
+            return True
+        return False
 
     def run(self) -> None:
+        if self.cancel_requested:
+            self.status = "cancelled"
+            self.finished_at = time.time()
+            return
         self.status = "running"
         self.started_at = time.time()
         try:
@@ -1454,6 +1512,9 @@ class Job:
                 simulator = Simulator(scenario_config, scenario_seed)
                 scenario_results: list[dict[str, Any]] = []
                 for index in range(scenario_config["games"]):
+                    self.wait_if_paused()
+                    if self.should_stop():
+                        break
                     record_timeline = (
                         bool(scenario_config.get("recordTimeline"))
                         and len(self.results) < self.config["maxRecordedGames"]
@@ -1468,6 +1529,8 @@ class Job:
                     self.results.append(result)
                     completed_runs += 1
                     self.progress = int(completed_runs / max(1, total_runs) * 100)
+                if self.should_stop() and not scenario_results:
+                    break
                 scenario_summary = summarize_results(scenario_results, scenario_config["players"])
                 scenario_payload = {
                     "id": scenario["id"],
@@ -1483,10 +1546,15 @@ class Job:
                     "summary": scenario_summary,
                 }
                 self.scenarios.append(scenario_payload)
+                if self.should_stop():
+                    break
             self.summary = aggregate_scenarios(self.scenarios)
             if len(self.scenarios) == 1:
                 self.summary.update(self.scenarios[0]["summary"])
-            self.status = "done"
+            if self.cancel_requested:
+                self.status = "cancelled"
+            else:
+                self.status = "done"
         except Exception:
             self.error = traceback.format_exc()
             self.status = "error"
@@ -1506,6 +1574,8 @@ class Job:
             "scenarioCount": len(self.scenario_plan),
             "scenarios": self.scenarios,
             "error": self.error,
+            "pauseRequested": self.pause_requested,
+            "cancelRequested": self.cancel_requested,
         }
         if include_results:
             data["results"] = self.results
@@ -1541,6 +1611,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(config)
         elif path == "/api/cards":
             self.send_json(cards_payload())
+        elif path == "/api/deck-options":
+            self.send_json(deck_options_payload())
         elif path == "/api/jobs":
             with JOBS_LOCK:
                 jobs = [job.snapshot(False) for job in JOBS.values()]
@@ -1565,6 +1637,35 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith("/api/jobs/"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) != 4 or parts[3] != "control":
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            length = int(self.headers.get("Content-Length") or "0")
+            raw = self.rfile.read(length).decode("utf-8")
+            try:
+                payload = json.loads(raw or "{}")
+            except json.JSONDecodeError as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+                return
+            job = JOBS.get(parts[2])
+            if not job:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            action = str(payload.get("action") or "").strip().lower()
+            if action == "pause":
+                job.pause()
+            elif action == "resume":
+                job.resume()
+            elif action == "cancel":
+                job.cancel()
+            else:
+                self.send_json({"error": "Unknown action"}, HTTPStatus.BAD_REQUEST)
+                return
+            self.send_json(job.snapshot(False))
+            return
+
         if parsed.path != "/api/jobs":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -1577,6 +1678,22 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
         self.send_json(job.snapshot(False), HTTPStatus.CREATED)
+
+    def do_DELETE(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) != 3 or parts[:2] != ["api", "jobs"]:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        with JOBS_LOCK:
+            job = JOBS.get(parts[2])
+            if not job:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            if job.status in ("queued", "running", "paused"):
+                job.cancel()
+            del JOBS[parts[2]]
+        self.send_json({"deleted": parts[2]})
 
     def send_json(self, data: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
@@ -1628,6 +1745,7 @@ HTML = r"""<!doctype html>
     body { margin: 0; background: #101418; color: #edf2f7; }
     main { max-width: 1180px; margin: 0 auto; padding: 24px; }
     header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
+    .top-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
     h1 { margin: 0 0 6px; font-size: 30px; }
     p { margin: 0; color: #a7b1bd; }
     .grid { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 18px; align-items: start; }
@@ -1650,6 +1768,17 @@ HTML = r"""<!doctype html>
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0d1117; border: 1px solid #28313d; border-radius: 6px; padding: 10px; max-height: 360px; overflow: auto; }
     progress { width: 100%; height: 12px; }
     a { color: #8fd6b3; }
+    .tutorial-panel { margin: 0 0 18px; border: 1px solid #2a3440; background: #151b22; border-radius: 8px; padding: 16px; }
+    .tutorial-panel[hidden] { display: none; }
+    .tutorial-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .tutorial-head h2 { margin: 0 0 4px; }
+    .tutorial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .tutorial-card { background: #0d1117; border: 1px solid #28313d; border-radius: 8px; padding: 12px; }
+    .tutorial-card h3 { margin: 0 0 8px; font-size: 16px; color: #edf2f7; }
+    .tutorial-card ul, .tutorial-card ol { margin: 0; padding-left: 18px; color: #cbd5df; }
+    .tutorial-card li { margin: 6px 0; }
+    .tutorial-card b { color: #8fd6b3; }
+    .tutorial-wide { grid-column: 1 / -1; }
     .viewer { margin-top: 16px; border-top: 1px solid #2a3440; padding-top: 16px; }
     .viewer-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
     .viewer-layout { display: grid; grid-template-columns: minmax(300px, 520px) 1fr; gap: 14px; align-items: start; }
@@ -1676,11 +1805,46 @@ HTML = r"""<!doctype html>
     .event-box { background: #0d1117; border: 1px solid #28313d; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
     .sweep-panel { margin: 12px 0; padding: 12px; border: 1px solid #28313d; border-radius: 8px; background: #0d1117; }
     .sweep-panel h3 { margin: 0 0 10px; }
+    details.sweep-panel summary { cursor: pointer; font-weight: 800; color: #edf2f7; }
+    .help { display: block; color: #8d99a8; font-size: 12px; line-height: 1.35; }
+    .subtle { color: #a7b1bd; font-size: 13px; line-height: 1.45; }
+    .preset-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
+    .deck-editor { display: grid; gap: 12px; margin-top: 12px; }
+    .deck-toolbar { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .deck-open-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .deck-open { text-align: left; padding: 12px; background: #101821; border-color: #28313d; }
+    .deck-open strong { display: block; margin-bottom: 4px; font-size: 15px; }
+    .deck-open span { color: #91a0ae; font-size: 12px; }
+    .deck-modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(4, 8, 14, .72); backdrop-filter: blur(4px); }
+    .deck-modal[hidden] { display: none; }
+    .deck-modal-box { width: min(980px, 100%); max-height: min(760px, 92vh); overflow: auto; border: 1px solid #33404d; border-radius: 10px; background: #151b22; box-shadow: 0 18px 60px rgba(0,0,0,.45); padding: 16px; }
+    .deck-modal-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .deck-modal-head h2 { margin: 0 0 4px; }
+    .deck-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+    .deck-modal-section[hidden] { display: none; }
+    .deck-list-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+    .pattern-family { border: 1px solid #28313d; border-radius: 10px; background: #0d1117; padding: 10px; margin-bottom: 10px; }
+    .pattern-family-head { display: grid; grid-template-columns: minmax(160px, 220px) 1fr; gap: 10px; align-items: start; }
+    .variant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .deck-card { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; background: #101821; border: 1px solid #28313d; border-radius: 8px; padding: 9px; }
+    .deck-card.has-art { grid-template-columns: auto 54px minmax(0, 1fr) auto; }
+    .deck-card.off { opacity: .48; }
+    .deck-card strong { display: block; font-size: 13px; }
+    .deck-card small { color: #91a0ae; overflow-wrap: anywhere; }
+    .deck-card input[type="number"] { width: 68px; padding: 6px; }
+    .deck-art { width: 54px; min-height: 54px; display: grid; place-items: center; border-radius: 6px; background: #f8fafc; overflow: hidden; }
+    .deck-art svg { width: 100%; height: auto; display: block; }
+    .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 12px 0; }
+    .chart { background: #0d1117; border: 1px solid #28313d; border-radius: 8px; padding: 10px; }
+    .chart h4 { margin: 0 0 8px; color: #edf2f7; }
+    .bar-row { display: grid; grid-template-columns: 72px 1fr auto; gap: 8px; align-items: center; margin: 6px 0; font-size: 12px; }
+    .bar-track { height: 9px; border-radius: 999px; background: #202a35; overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: inherit; background: #8fd6b3; }
     .scenario-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
     .scenario-table th, .scenario-table td { border: 1px solid #28313d; padding: 7px; text-align: left; vertical-align: top; }
     .scenario-table th { background: #0d1117; }
     .deck-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px; margin-top: 6px; color: #cbd5df; font-size: 12px; }
-    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } .metrics, .row, .checks { grid-template-columns: 1fr; } header { display: block; } }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } .metrics, .row, .checks, .deck-open-grid, .pattern-family-head { grid-template-columns: 1fr; } header { display: block; } .top-actions { justify-content: flex-start; margin-top: 12px; } }
     @media (max-width: 860px) { .viewer-layout { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -1691,59 +1855,270 @@ HTML = r"""<!doctype html>
       <h1>Card GOL Playtest</h1>
       <p>Simule partidas em background, altere regras e compare composicoes do baralho.</p>
     </div>
-    <button id="refresh">Atualizar jobs</button>
+    <div class="top-actions">
+      <button id="tutorialToggle" type="button">Tutorial completo</button>
+      <button id="refresh">Atualizar jobs</button>
+    </div>
   </header>
+
+  <section id="tutorialPanel" class="tutorial-panel" hidden>
+    <div class="tutorial-head">
+      <div>
+        <h2>Como usar o simulador</h2>
+        <p class="subtle">Este painel explica o fluxo inteiro: configurar uma simulacao, editar baralho, entender combinatoria, ler graficos e controlar jobs.</p>
+      </div>
+      <button id="tutorialClose" type="button">Fechar</button>
+    </div>
+    <div class="tutorial-grid">
+      <article class="tutorial-card tutorial-wide">
+        <h3>Fluxo recomendado</h3>
+        <ol>
+          <li>Comece em <b>Simulacao rapida</b>. Escolha quantidade de partidas, jogadores, celulas iniciais e alvo de resgates.</li>
+          <li>Ajuste o <b>Baralho desta simulacao</b>, removendo cartas ou mudando quantidades.</li>
+          <li>Deixe <b>Combinatoria</b> desligada para testar exatamente essa configuracao.</li>
+          <li>Clique em <b>Rodar com esta configuracao</b>.</li>
+          <li>Leia os graficos no card do job. Se gravou replay, clique em <b>Visualizar partidas</b>.</li>
+        </ol>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Presets</h3>
+        <ul>
+          <li><b>Preset rapido</b>: 100 partidas, sem replay. Bom para testar uma ideia sem gastar memoria.</li>
+          <li><b>Preset com replay</b>: 10 partidas e timeline ligada. Bom para assistir o comportamento da IA.</li>
+          <li><b>Preset balanceamento</b>: prepara uma varredura com jogadores, celulas e metas diferentes.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Campos principais</h3>
+        <ul>
+          <li><b>Partidas</b>: numero de jogos independentes com a mesma regra.</li>
+          <li><b>Jogadores</b>: 2, 3 ou 4 IAs simuladas.</li>
+          <li><b>Seed</b>: texto para repetir exatamente o mesmo teste. Vazio gera aleatorio.</li>
+          <li><b>Limite de turnos</b>: corta partidas que demorarem demais.</li>
+          <li><b>Celulas iniciais</b>: quantas celulas vivas entram no tabuleiro no comeco.</li>
+          <li><b>Resgates para encerrar</b>: meta que dispara o fim da partida.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Replay visual</h3>
+        <ul>
+          <li><b>Partidas com replay</b>: quantas partidas salvar passo a passo.</li>
+          <li><b>Gravar timeline</b>: guarda tabuleiro, maos, acoes e resgates em cada passo.</li>
+          <li>Use replay baixo em testes grandes. Timeline alta ocupa mais memoria porque salva muitos estados.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Regras opcionais</h3>
+        <ul>
+          <li><b>Resgate fora do turno</b>: jogadores nao ativos tambem podem resgatar quando um padrao aparece.</li>
+          <li><b>Padroes podem sobrepor</b>: permite reconhecer padroes mesmo com celulas vivas extras ao redor.</li>
+          <li><b>Padroes atravessam borda</b>: o tabuleiro se conecta nas bordas, como um toro.</li>
+          <li><b>Finaliza turno ativo</b>: quando alguem bate a meta, o turno atual ainda termina.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Editor de baralho</h3>
+        <ul>
+          <li><b>Checkbox ligado</b>: a carta entra no deck.</li>
+          <li><b>Checkbox desligado</b>: a carta fica fora da simulacao.</li>
+          <li><b>Numero</b>: quantidade de copias fisicas daquela carta.</li>
+          <li><b>Padrao</b>: familias como Glider, Block, Toad. O simulador gera as variantes de fase/espelho internamente.</li>
+          <li><b>Acao</b>: cartas que adicionam, removem, trocam quadrantes ou limpam area.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Combinatoria</h3>
+        <ul>
+          <li>Desligada: roda apenas a configuracao visivel na tela.</li>
+          <li>Ligada: cria muitos cenarios combinando listas de jogadores, celulas iniciais, metas e modos de deck.</li>
+          <li><b>Maximo de cenarios</b> impede uma varredura grande demais por acidente.</li>
+          <li>Use para balanceamento, nao para assistir partidas individuais.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Modos de deck na combinatoria</h3>
+        <ul>
+          <li><b>Deck atual</b>: usa o baralho configurado no editor.</li>
+          <li><b>Sem cada padrao</b>: cria um cenario removendo uma familia por vez.</li>
+          <li><b>Mais cada padrao</b>: favorece uma familia por vez para medir impacto.</li>
+          <li><b>Reduz maiores</b>: diminui cartas que aparecem acima da mediana.</li>
+          <li><b>Uniforme</b>: tenta equilibrar as quantidades entre familias.</li>
+          <li><b>Todos x1/x2/x4/x6/x8</b>: testa decks com quantidade igual para todas as familias.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Resultados e graficos</h3>
+        <ul>
+          <li><b>Vitorias</b>: quantas partidas cada jogador venceu.</li>
+          <li><b>Score medio</b>: media de pontos por jogador.</li>
+          <li><b>Distribuicao de turnos</b>: min, p10, mediana, p90 e max; mostra duracao e variancia.</li>
+          <li><b>Padroes mais resgatados</b>: quais cartas aparecem mais no fim das partidas.</li>
+          <li><b>CSV</b> baixa os resultados brutos para planilha.</li>
+        </ul>
+      </article>
+
+      <article class="tutorial-card">
+        <h3>Jobs</h3>
+        <ul>
+          <li><b>Pausar</b>: segura a simulacao entre partidas, em um ponto seguro.</li>
+          <li><b>Retomar</b>: continua o job pausado.</li>
+          <li><b>Cancelar</b>: para um job em andamento.</li>
+          <li><b>Deletar</b>: remove o job da memoria da pagina.</li>
+          <li>Jobs ficam em memoria; reiniciar o servico apaga resultados antigos.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
 
   <div class="grid">
     <section>
-      <h2>Nova simulacao</h2>
-      <div class="row">
-        <label>Partidas <input id="games" type="number" min="1" value="500"></label>
-        <label>Jogadores <select id="players"><option>2</option><option>3</option><option>4</option></select></label>
+      <h2>Simulacao rapida</h2>
+      <p class="subtle">Configure uma regra e um baralho, escolha quantas partidas rodar e compare o resultado. A combinatoria fica mais abaixo e so entra quando voce ativar.</p>
+      <div class="preset-row">
+        <button id="presetQuick" type="button">Preset rapido</button>
+        <button id="presetVisual" type="button">Preset com replay</button>
+        <button id="presetBalance" type="button">Preset balanceamento</button>
       </div>
       <div class="row">
-        <label>Seed <input id="seed" placeholder="vazio = aleatorio"></label>
-        <label>Max turnos <input id="maxTurns" type="number" min="1" value="300"></label>
+        <label>Partidas nesta simulacao
+          <input id="games" type="number" min="1" value="500">
+          <span class="help">Quantos jogos independentes rodar com esta mesma configuracao. Use 20-100 para testar rapido, 500+ para estatistica melhor.</span>
+        </label>
+        <label>Jogadores
+          <select id="players"><option>2</option><option>3</option><option>4</option></select>
+          <span class="help">Numero de jogadores simulados pela IA.</span>
+        </label>
       </div>
       <div class="row">
-        <label>Celulas iniciais <input id="initialLiveCells" type="number" min="0" value="12"></label>
-        <label>Alvo de resgates <input id="rescueTarget" type="number" min="1" value="5"></label>
+        <label>Seed
+          <input id="seed" placeholder="vazio = aleatorio">
+          <span class="help">Preencha para repetir exatamente uma rodada de testes. Vazio gera uma seed nova.</span>
+        </label>
+        <label>Limite de turnos
+          <input id="maxTurns" type="number" min="1" value="300">
+          <span class="help">Se uma partida travar sem vencedor, ela termina neste limite.</span>
+        </label>
       </div>
       <div class="row">
-        <label>Partidas visuais <input id="maxRecordedGames" type="number" min="0" value="20"></label>
-        <label>Replay <select id="recordTimeline"><option value="true">Gravar timeline</option><option value="false">So agregados</option></select></label>
+        <label>Celulas vivas iniciais
+          <input id="initialLiveCells" type="number" min="0" value="12">
+          <span class="help">Quantidade de celulas colocadas no tabuleiro antes do primeiro turno.</span>
+        </label>
+        <label>Resgates para encerrar
+          <input id="rescueTarget" type="number" min="1" value="5">
+          <span class="help">Quando um jogador chega neste numero de padroes resgatados, o fim de jogo e disparado.</span>
+        </label>
+      </div>
+      <div class="row">
+        <label>Partidas com replay visual
+          <input id="maxRecordedGames" type="number" min="0" value="20">
+          <span class="help">Quantas partidas salvar passo a passo para ver no replay. Aumentar isso consome mais memoria.</span>
+        </label>
+        <label>Replay
+          <select id="recordTimeline"><option value="true">Gravar timeline</option><option value="false">So resultados agregados</option></select>
+          <span class="help">Desligue para rodadas grandes em que voce so quer numeros e graficos.</span>
+        </label>
       </div>
       <div class="checks">
-        <label><input id="offTurnRescue" type="checkbox" checked> Resgate fora do turno</label>
-        <label><input id="allowOverlappingPatterns" type="checkbox" checked> Padroes podem sobrepor</label>
-        <label><input id="wrapPatterns" type="checkbox"> Padroes atravessam borda</label>
-        <label><input id="finishActiveTurnOnly" type="checkbox" checked> Finaliza turno ativo</label>
+        <label><input id="offTurnRescue" type="checkbox" checked> Resgate fora do turno <span class="help">Jogadores nao ativos tambem podem resgatar padroes depois da acao do turno.</span></label>
+        <label><input id="allowOverlappingPatterns" type="checkbox" checked> Padroes podem sobrepor <span class="help">Permite reconhecer um padrao mesmo que existam celulas vivas extras ao redor.</span></label>
+        <label><input id="wrapPatterns" type="checkbox"> Padroes atravessam borda <span class="help">O tabuleiro vira um toro: um padrao pode continuar do outro lado.</span></label>
+        <label><input id="finishActiveTurnOnly" type="checkbox" checked> Finaliza turno ativo <span class="help">Quando alguem bate a meta, termina o turno atual antes de fechar a partida.</span></label>
       </div>
+
       <div class="sweep-panel">
-        <h3>Combinatoria de balanceamento</h3>
-        <label><input id="sweepEnabled" type="checkbox"> Ativar varredura de variaveis</label>
+        <h3>Baralho desta simulacao</h3>
+        <p class="subtle">Clique em uma caixa para abrir o menu de cartas. Ali voce desmarca cartas, muda quantidades, restaura o padrao ou zera o baralho.</p>
+        <div class="deck-open-grid">
+          <button id="openPatternDeck" class="deck-open" type="button">
+            <strong>Abrir cartas de padrao</strong>
+            <span id="patternDeckTotal">Carregando...</span>
+          </button>
+          <button id="openActionDeck" class="deck-open" type="button">
+            <strong>Abrir cartas de acao</strong>
+            <span id="actionDeckTotal">Carregando...</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="deckModal" class="deck-modal" hidden role="dialog" aria-modal="true" aria-labelledby="deckModalTitle">
+        <div class="deck-modal-box">
+          <div class="deck-modal-head">
+            <div>
+              <h2 id="deckModalTitle">Cartas do baralho</h2>
+              <p id="deckModalHelp" class="subtle">Marque as cartas que entram no deck e ajuste a quantidade de copias.</p>
+            </div>
+            <button id="closeDeckModal" type="button">Fechar</button>
+          </div>
+          <div class="deck-modal-actions">
+            <button id="resetDecks" type="button">Restaurar baralho padrao</button>
+            <button id="zeroCurrentDeck" type="button">Zerar este tipo</button>
+            <button id="zeroDecks" type="button">Zerar tudo</button>
+          </div>
+          <section id="patternDeckModalSection" class="deck-modal-section">
+            <div class="deck-toolbar">
+              <strong>Cartas de padrao</strong>
+              <span class="help">Familias como Glider, Block e Toad. O simulador escolhe variantes fisicas de fase/espelho por familia.</span>
+            </div>
+            <div id="patternDeckEditor" class="deck-list-editor"></div>
+          </section>
+          <section id="actionDeckModalSection" class="deck-modal-section" hidden>
+            <div class="deck-toolbar">
+              <strong>Cartas de acao</strong>
+              <span class="help">Todas respeitam o quadrante sorteado. O dado define par/impar; a acao so atua dentro do quadrante escolhido entre os permitidos.</span>
+            </div>
+            <div id="actionDeckEditor" class="deck-list-editor"></div>
+          </section>
+        </div>
+      </div>
+
+      <details class="sweep-panel">
+        <summary>Combinatoria de balanceamento opcional</summary>
+        <p class="subtle">Use quando quiser comparar muitas variacoes automaticamente. Se ficar desativada, a simulacao usa exatamente os campos e o baralho acima.</p>
+        <label><input id="sweepEnabled" type="checkbox"> Ativar combinatoria</label>
         <div class="row">
-          <label>Jogadores <input id="sweepPlayers" placeholder="2,3,4"></label>
-          <label>Celulas iniciais <input id="sweepCells" placeholder="8,12,16,20"></label>
+          <label>Jogadores testados
+            <input id="sweepPlayers" placeholder="2,3,4">
+            <span class="help">Lista separada por virgula. Exemplo: testar 2, 3 e 4 jogadores.</span>
+          </label>
+          <label>Celulas iniciais testadas
+            <input id="sweepCells" placeholder="8,12,16,20">
+            <span class="help">Lista de valores para comparar densidade inicial do tabuleiro.</span>
+          </label>
         </div>
         <div class="row">
-          <label>Resgates para ganhar <input id="sweepTargets" placeholder="4,5,6"></label>
-          <label>Max cenarios <input id="sweepMaxScenarios" type="number" min="1" value="120"></label>
+          <label>Metas de resgate testadas
+            <input id="sweepTargets" placeholder="4,5,6">
+            <span class="help">Lista de alvos de vitoria para ver duracao e ritmo.</span>
+          </label>
+          <label>Maximo de cenarios
+            <input id="sweepMaxScenarios" type="number" min="1" value="120">
+            <span class="help">Trava de seguranca para nao gerar uma combinatoria enorme sem querer.</span>
+          </label>
         </div>
         <div class="checks">
-          <label><input class="deckMode" type="checkbox" value="current" checked> Deck atual</label>
-          <label><input class="deckMode" type="checkbox" value="without_each"> Sem cada padrao</label>
-          <label><input class="deckMode" type="checkbox" value="favor_each"> Mais cada padrao</label>
-          <label><input class="deckMode" type="checkbox" value="reduce_high"> Reduz maiores</label>
-          <label><input class="deckMode" type="checkbox" value="uniform"> Uniforme</label>
-          <label><input class="deckMode" type="checkbox" value="count_grid"> Todos x1/x2/x4/x6/x8</label>
+          <label><input class="deckMode" type="checkbox" value="current" checked> Deck atual <span class="help">Usa o baralho configurado acima como cenario-base.</span></label>
+          <label><input class="deckMode" type="checkbox" value="without_each"> Sem cada padrao <span class="help">Cria um cenario removendo uma familia por vez.</span></label>
+          <label><input class="deckMode" type="checkbox" value="favor_each"> Mais cada padrao <span class="help">Cria cenarios favorecendo uma familia por vez.</span></label>
+          <label><input class="deckMode" type="checkbox" value="reduce_high"> Reduz maiores <span class="help">Diminui familias que aparecem acima da mediana.</span></label>
+          <label><input class="deckMode" type="checkbox" value="uniform"> Uniforme <span class="help">Redistribui quantidades para aproximar todas as familias.</span></label>
+          <label><input class="deckMode" type="checkbox" value="count_grid"> Todos x1/x2/x4/x6/x8 <span class="help">Testa decks em que todas as familias tem a mesma quantidade.</span></label>
         </div>
-      </div>
-      <label>Config JSON
+      </details>
+      <label>Config JSON avancado
         <textarea id="configJson"></textarea>
+        <span class="help">Opcional: edite direto se quiser um parametro que ainda nao tem controle visual.</span>
       </label>
       <div class="actions">
-        <button class="primary" id="run">Rodar simulacao</button>
+        <button class="primary" id="run">Rodar com esta configuracao</button>
         <button id="loadDefault">Recarregar padrao atual</button>
       </div>
     </section>
@@ -1775,10 +2150,159 @@ HTML = r"""<!doctype html>
 <script>
 let latestConfig = null;
 let cardsData = null;
+let deckOptions = null;
 let selectedJob = null;
 let selectedGame = null;
 let selectedStep = 0;
 let playTimer = null;
+let defaultPatternDeck = [];
+let defaultActionDeck = [];
+let activeDeckModalKind = 'pattern';
+
+const actionLabels = {
+  'add-diagonal': 'Adicionar diagonal',
+  'add-orthogonal': 'Adicionar ortogonal',
+  'add-isolated': 'Adicionar isolada',
+  'add-any': 'Adicionar em volta',
+  'remove-diagonal': 'Remover diagonal',
+  'remove-orthogonal': 'Remover ortogonal',
+  'remove-isolated': 'Remover isolada',
+  'remove-any': 'Remover em volta',
+  'swap-grid-tiles': 'Trocar quadrantes',
+  'clear-grid-tile': 'Limpar quadrante'
+};
+
+const actionDetails = {
+  'add-diagonal': 'Adiciona somente dentro do quadrante sorteado, em uma casa diagonalmente adjacente a uma celula viva.',
+  'add-orthogonal': 'Adiciona somente dentro do quadrante sorteado, em uma casa ortogonalmente adjacente a uma celula viva.',
+  'add-isolated': 'Adiciona somente dentro do quadrante sorteado, em uma casa vazia sem contato com nenhuma celula viva nos 8 lados.',
+  'add-any': 'Adiciona somente dentro do quadrante sorteado, em qualquer casa adjacente a uma celula viva.',
+  'remove-diagonal': 'Remove somente dentro do quadrante sorteado, uma celula viva diagonalmente adjacente a outra.',
+  'remove-orthogonal': 'Remove somente dentro do quadrante sorteado, uma celula viva ortogonalmente adjacente a outra.',
+  'remove-isolated': 'Remove somente dentro do quadrante sorteado, uma celula viva sem contato com nenhuma outra nos 8 lados.',
+  'remove-any': 'Remove somente dentro do quadrante sorteado, uma celula viva adjacente a outra.',
+  'swap-grid-tiles': 'Troca o quadrante sorteado com outro quadrante.',
+  'clear-grid-tile': 'Limpa todas as celulas vivas do quadrante sorteado.'
+};
+
+function deckCountsFromEntries(entries) {
+  return Object.fromEntries((entries || []).map((entry) => [entry.id, Number(entry.count || 0)]));
+}
+
+function deckEntriesFromEditor(kind) {
+  return Array.from(document.querySelectorAll(`[data-deck-kind="${kind}"]`)).map((row) => {
+    const enabled = row.querySelector('.deck-enabled').checked;
+    const count = enabled ? Math.max(0, Number(row.querySelector('.deck-count').value || 0)) : 0;
+    return { id: row.dataset.cardId, count };
+  }).filter((entry) => entry.count > 0);
+}
+
+function updateDeckTotals() {
+  const patternTotal = deckEntriesFromEditor('pattern').reduce((sum, entry) => sum + entry.count, 0);
+  const actionTotal = deckEntriesFromEditor('action').reduce((sum, entry) => sum + entry.count, 0);
+  const patternEl = document.getElementById('patternDeckTotal');
+  const actionEl = document.getElementById('actionDeckTotal');
+  if (patternEl) patternEl.textContent = `${patternTotal} cartas de padrao ativas`;
+  if (actionEl) actionEl.textContent = `${actionTotal} cartas de acao ativas`;
+}
+
+function openDeckModal(kind) {
+  activeDeckModalKind = kind;
+  const isPattern = kind === 'pattern';
+  document.getElementById('deckModalTitle').textContent = isPattern ? 'Cartas de padrao' : 'Cartas de acao';
+  document.getElementById('deckModalHelp').textContent = isPattern
+    ? 'Escolha quais familias de padrao entram no baralho e quantas copias fisicas cada uma tem.'
+    : 'Escolha quais cartas de acao entram no baralho e quantas copias fisicas cada uma tem.';
+  document.getElementById('patternDeckModalSection').hidden = !isPattern;
+  document.getElementById('actionDeckModalSection').hidden = isPattern;
+  document.getElementById('deckModal').hidden = false;
+}
+
+function closeDeckModal() {
+  document.getElementById('deckModal').hidden = true;
+}
+
+function setEditorDeck(kind, entries) {
+  const counts = deckCountsFromEntries(entries);
+  document.querySelectorAll(`[data-deck-kind="${kind}"]`).forEach((row) => {
+    const count = counts[row.dataset.cardId] || 0;
+    row.querySelector('.deck-enabled').checked = count > 0;
+    row.querySelector('.deck-count').value = count;
+    row.classList.toggle('off', count <= 0);
+  });
+  updateDeckTotals();
+}
+
+function renderDeckEditor() {
+  if (!deckOptions || !latestConfig) return;
+  const patternCounts = deckCountsFromEntries(latestConfig.patternDeck || defaultPatternDeck);
+  const actionCounts = deckCountsFromEntries(latestConfig.actionDeck || defaultActionDeck);
+  const patternFamilies = Object.entries(deckOptions.patterns || {}).map(([id, card]) => {
+    const variants = Object.values(deckOptions.patternCards || {})
+      .filter((variant) => variant.family === id)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return {
+      id,
+      label: card.name || id,
+      detail: `${card.category || 'Padrao'} · ${card.phaseCount || 1} fase(s) · ${variants.length} cartas desenhadas`,
+      count: patternCounts[id] || 0,
+      pattern: card.pattern,
+      variants
+    };
+  });
+  const actionEntries = (deckOptions.actions || []).map((card) => ({
+    id: card.id,
+    label: actionLabels[card.id] || card.id,
+    detail: actionDetails[card.id] || (card.mode === 'add' ? 'Acao de adicionar celula' : card.mode === 'remove' ? 'Acao de remover celula' : card.mode === 'swap' ? 'Troca quadrantes do tabuleiro' : 'Limpa um quadrante'),
+    count: actionCounts[card.id] || 0,
+    pattern: card.layout === 'swap'
+      ? [[1,0,0],[0,0,0],[0,0,1]]
+      : card.layout === 'clear'
+        ? [[1,1,1],[1,1,1],[1,1,1]]
+        : card.pattern,
+    mode: card.mode
+  }));
+  document.getElementById('patternDeckEditor').innerHTML = patternFamilies.map((family) => patternFamilyEditor(family, patternCounts)).join('');
+  document.getElementById('actionDeckEditor').innerHTML = actionEntries.map((entry) => deckEditorCard('action', entry)).join('');
+  document.querySelectorAll('.deck-enabled, .deck-count').forEach((input) => {
+    input.addEventListener('change', () => {
+      const row = input.closest('.deck-card');
+      if (input.classList.contains('deck-enabled') && input.checked && Number(row.querySelector('.deck-count').value || 0) <= 0) {
+        row.querySelector('.deck-count').value = 1;
+      }
+      row.classList.toggle('off', !row.querySelector('.deck-enabled').checked || Number(row.querySelector('.deck-count').value || 0) <= 0);
+      updateDeckTotals();
+    });
+  });
+  updateDeckTotals();
+}
+
+function patternFamilyEditor(family, counts) {
+  const variantCards = family.variants.map((variant) => deckEditorCard('pattern', {
+    id: variant.id,
+    label: `${variant.name} ${variant.label}`,
+    detail: `${variant.category || 'Padrao'} · ${variant.points} celulas · ${variant.id}`,
+    count: counts[variant.id] || 0,
+    pattern: variant.pattern,
+    mode: 'pattern'
+  })).join('');
+  return `<article class="pattern-family">
+    <div class="pattern-family-head">
+      ${deckEditorCard('pattern', family)}
+      <div class="variant-grid">${variantCards}</div>
+    </div>
+  </article>`;
+}
+
+function deckEditorCard(kind, entry) {
+  const art = entry.pattern ? `<span class="deck-art">${buildTinyGridSvg(entry.pattern, entry.mode || 'pattern')}</span>` : '';
+  return `<label class="deck-card ${art ? 'has-art' : ''} ${entry.count > 0 ? '' : 'off'}" data-deck-kind="${kind}" data-card-id="${escapeHtml(entry.id)}">
+    <input class="deck-enabled" type="checkbox" ${entry.count > 0 ? 'checked' : ''}>
+    ${art}
+    <span><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.detail)}<br>${escapeHtml(entry.id)}</small></span>
+    <input class="deck-count" type="number" min="0" value="${entry.count}" aria-label="Quantidade de ${escapeHtml(entry.label)}">
+  </label>`;
+}
 
 async function getJson(url, options) {
   const response = await fetch(url, options);
@@ -1801,6 +2325,8 @@ function syncFormToConfig() {
   config.allowOverlappingPatterns = document.getElementById('allowOverlappingPatterns').checked;
   config.wrapPatterns = document.getElementById('wrapPatterns').checked;
   config.finishActiveTurnOnly = document.getElementById('finishActiveTurnOnly').checked;
+  config.patternDeck = deckEntriesFromEditor('pattern');
+  config.actionDeck = deckEntriesFromEditor('action');
   config.sweep = {
     enabled: document.getElementById('sweepEnabled').checked,
     players: parseNumberList(document.getElementById('sweepPlayers').value),
@@ -1837,6 +2363,7 @@ function applyConfig(config) {
     input.checked = modes.has(input.value);
   });
   document.getElementById('configJson').value = JSON.stringify(config, null, 2);
+  renderDeckEditor();
 }
 
 function parseNumberList(value) {
@@ -1896,6 +2423,55 @@ function renderScenarioTable(job) {
   </table>`;
 }
 
+function barRows(entries, color = '#8fd6b3') {
+  const max = Math.max(1, ...entries.map((item) => Number(item.value || 0)));
+  return entries.map((item) => `
+    <div class="bar-row">
+      <span title="${escapeHtml(item.label)}">${escapeHtml(item.label)}</span>
+      <span class="bar-track"><i class="bar-fill" style="width:${Math.max(2, Number(item.value || 0) / max * 100)}%;background:${color}"></i></span>
+      <strong>${escapeHtml(item.value)}</strong>
+    </div>
+  `).join('');
+}
+
+function renderCharts(job) {
+  const summary = job.summary || {};
+  const wins = (summary.wins || []).map((value, index) => ({ label: `P${index + 1}`, value }));
+  const scores = (summary.avgScoreByPlayer || []).map((value, index) => ({ label: `P${index + 1}`, value }));
+  const rescued = Object.entries(summary.rescuedByCard || {}).slice(0, 10).map(([label, value]) => ({ label, value }));
+  const turnStats = summary.turns
+    ? [
+        { label: 'min', value: summary.turns.min },
+        { label: 'p10', value: summary.turns.p10 },
+        { label: 'med', value: summary.turns.median },
+        { label: 'p90', value: summary.turns.p90 },
+        { label: 'max', value: summary.turns.max }
+      ]
+    : [];
+  if (!wins.length && !scores.length && !rescued.length && !turnStats.length) return '';
+  return `<div class="chart-grid">
+    ${wins.length ? `<div class="chart"><h4>Vitorias</h4>${barRows(wins, '#8fd6b3')}</div>` : ''}
+    ${scores.length ? `<div class="chart"><h4>Score medio</h4>${barRows(scores, '#f4c95d')}</div>` : ''}
+    ${turnStats.length ? `<div class="chart"><h4>Distribuicao de turnos</h4>${barRows(turnStats, '#8fbff7')}</div>` : ''}
+    ${rescued.length ? `<div class="chart"><h4>Padroes mais resgatados</h4>${barRows(rescued, '#c6a7ff')}</div>` : ''}
+  </div>`;
+}
+
+function renderJobControls(job) {
+  const canPause = job.status === 'running' || job.status === 'queued';
+  const canResume = job.status === 'paused';
+  const canCancel = ['running', 'queued', 'paused'].includes(job.status);
+  return `<div class="actions">
+    ${canPause ? `<button onclick="controlJob('${job.id}', 'pause')">Pausar</button>` : ''}
+    ${canResume ? `<button onclick="controlJob('${job.id}', 'resume')">Retomar</button>` : ''}
+    ${canCancel ? `<button onclick="controlJob('${job.id}', 'cancel')">Cancelar</button>` : ''}
+    <button onclick="deleteJob('${job.id}')">Deletar</button>
+    <button onclick="loadJobReplay('${job.id}')">Visualizar partidas</button>
+    <a href="api/jobs/${job.id}/results.csv">Baixar CSV</a>
+    <a href="api/jobs/${job.id}" target="_blank">JSON completo</a>
+  </div>`;
+}
+
 function renderJob(job) {
   const summary = job.summary || {};
   const turns = summary.turns || {};
@@ -1918,31 +2494,57 @@ function renderJob(job) {
     ${scenarioNote}
     <p>Vitorias: ${wins.map((v, i) => `P${i + 1}: ${v}`).join(' | ') || '-'}</p>
     <p>Score medio: ${(summary.avgScoreByPlayer || []).map((v, i) => `P${i + 1}: ${v}`).join(' | ') || '-'}</p>
+    ${renderCharts(job)}
     ${job.error ? `<pre>${job.error}</pre>` : ''}
     ${cardLines ? `<pre>Padroes resgatados\n${cardLines}</pre>` : ''}
     ${renderScenarioTable(job)}
-    <div class="actions">
-      <button onclick="loadJobReplay('${job.id}')">Visualizar partidas</button>
-      <a href="/api/jobs/${job.id}/results.csv">Baixar CSV</a>
-      <a href="/api/jobs/${job.id}" target="_blank">JSON completo</a>
-    </div>
+    ${renderJobControls(job)}
   </article>`;
 }
 
 async function refreshJobs() {
-  const data = await getJson('/api/jobs');
+  const data = await getJson('api/jobs');
   document.getElementById('jobs').innerHTML = data.jobs.length
     ? data.jobs.map(renderJob).join('')
     : '<p>Nenhuma simulacao ainda.</p>';
 }
 
+async function controlJob(jobId, action) {
+  await getJson(`api/jobs/${jobId}/control`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action })
+  });
+  await refreshJobs();
+}
+
+async function deleteJob(jobId) {
+  if (!confirm('Deletar esta simulacao da memoria?')) return;
+  await getJson(`api/jobs/${jobId}`, { method: 'DELETE' });
+  if (selectedJob?.id === jobId) {
+    selectedJob = null;
+    selectedGame = null;
+    document.getElementById('viewer').hidden = true;
+  }
+  await refreshJobs();
+}
+
 async function loadDefault() {
-  const config = await getJson('/api/default-config');
+  const config = await getJson('api/default-config');
+  defaultPatternDeck = JSON.parse(JSON.stringify(config.patternDeck || []));
+  defaultActionDeck = JSON.parse(JSON.stringify(config.actionDeck || []));
   applyConfig(config);
 }
 
 async function loadCardsData() {
-  cardsData = await getJson('/api/cards');
+  if (cardsData) return cardsData;
+  cardsData = await getJson('api/cards');
+  return cardsData;
+}
+
+async function loadDeckOptions() {
+  deckOptions = await getJson('api/deck-options');
+  renderDeckEditor();
 }
 
 function buildTinyGridSvg(pattern, mode = 'pattern') {
@@ -2020,7 +2622,8 @@ function renderMiniCard(cardId, kindHint = '') {
 }
 
 async function loadJobReplay(jobId) {
-  selectedJob = await getJson(`/api/jobs/${jobId}`);
+  await loadCardsData();
+  selectedJob = await getJson(`api/jobs/${jobId}`);
   const recordedGames = (selectedJob.results || []).filter((game) => Array.isArray(game.timeline) && game.timeline.length);
   const viewer = document.getElementById('viewer');
   viewer.hidden = false;
@@ -2158,7 +2761,7 @@ document.getElementById('run').addEventListener('click', async () => {
   try {
     const config = syncFormToConfig();
     document.getElementById('configJson').value = JSON.stringify(config, null, 2);
-    await getJson('/api/jobs', {
+    await getJson('api/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config })
@@ -2172,14 +2775,65 @@ document.getElementById('run').addEventListener('click', async () => {
 });
 
 document.getElementById('refresh').addEventListener('click', refreshJobs);
+document.getElementById('tutorialToggle').addEventListener('click', () => {
+  const panel = document.getElementById('tutorialPanel');
+  panel.hidden = !panel.hidden;
+  document.getElementById('tutorialToggle').textContent = panel.hidden ? 'Tutorial completo' : 'Ocultar tutorial';
+  if (!panel.hidden) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+document.getElementById('tutorialClose').addEventListener('click', () => {
+  document.getElementById('tutorialPanel').hidden = true;
+  document.getElementById('tutorialToggle').textContent = 'Tutorial completo';
+});
 document.getElementById('loadDefault').addEventListener('click', loadDefault);
+document.getElementById('resetDecks').addEventListener('click', () => {
+  setEditorDeck('pattern', defaultPatternDeck);
+  setEditorDeck('action', defaultActionDeck);
+});
+document.getElementById('openPatternDeck').addEventListener('click', () => openDeckModal('pattern'));
+document.getElementById('openActionDeck').addEventListener('click', () => openDeckModal('action'));
+document.getElementById('closeDeckModal').addEventListener('click', closeDeckModal);
+document.getElementById('deckModal').addEventListener('click', (event) => {
+  if (event.target.id === 'deckModal') closeDeckModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeDeckModal();
+});
+document.getElementById('zeroCurrentDeck').addEventListener('click', () => {
+  setEditorDeck(activeDeckModalKind, []);
+});
+document.getElementById('zeroDecks').addEventListener('click', () => {
+  setEditorDeck('pattern', []);
+  setEditorDeck('action', []);
+});
+document.getElementById('presetQuick').addEventListener('click', () => {
+  document.getElementById('games').value = 100;
+  document.getElementById('recordTimeline').value = 'false';
+  document.getElementById('maxRecordedGames').value = 0;
+  document.getElementById('sweepEnabled').checked = false;
+});
+document.getElementById('presetVisual').addEventListener('click', () => {
+  document.getElementById('games').value = 10;
+  document.getElementById('recordTimeline').value = 'true';
+  document.getElementById('maxRecordedGames').value = 10;
+  document.getElementById('sweepEnabled').checked = false;
+});
+document.getElementById('presetBalance').addEventListener('click', () => {
+  document.getElementById('games').value = 100;
+  document.getElementById('recordTimeline').value = 'false';
+  document.getElementById('maxRecordedGames').value = 0;
+  document.getElementById('sweepEnabled').checked = true;
+  document.getElementById('sweepPlayers').value = '2,3,4';
+  document.getElementById('sweepCells').value = '8,12,16,20';
+  document.getElementById('sweepTargets').value = '4,5,6';
+});
 document.getElementById('gameSelect').addEventListener('change', (event) => selectGame(Number(event.target.value)));
 document.getElementById('stepSlider').addEventListener('input', (event) => goToStep(Number(event.target.value)));
 document.getElementById('prevStep').addEventListener('click', () => goToStep(selectedStep - 1));
 document.getElementById('nextStep').addEventListener('click', () => goToStep(selectedStep + 1));
 document.getElementById('playPause').addEventListener('click', togglePlayback);
 
-Promise.all([loadCardsData(), loadDefault()]).then(refreshJobs);
+Promise.all([loadDeckOptions(), loadDefault()]).then(refreshJobs);
 setInterval(refreshJobs, 1500);
 </script>
 </body>

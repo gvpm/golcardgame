@@ -1,0 +1,16 @@
+[Unit]
+Description=Card GOL playtest simulator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gvpm
+Group=gvpm
+WorkingDirectory=/home/gvpm/Documents/server/golcardgame
+ExecStart=/usr/bin/python3 /home/gvpm/Documents/server/golcardgame/playtest_server.py --host 127.0.0.1 --port 8766
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
