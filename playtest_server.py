@@ -45,8 +45,13 @@ DEFAULT_CONFIG = {
     "players": 2,
     "seed": "",
     "initialLiveCells": 12,
-    "handSize": 5,
+    "handSize": 4,
+    "patternDrawMode": "single",
+    "smallPatternHand": 2,
+    "largePatternHand": 2,
     "rescueTarget": 5,
+    "requireLargeRescue": False,
+    "largeRescueMinCells": 9,
     "maxTurns": 300,
     "wrapPatterns": False,
     "allowOverlappingPatterns": True,
@@ -93,8 +98,15 @@ def merge_config(raw: dict[str, Any] | None) -> dict[str, Any]:
     config["games"] = int(config.get("games") or 1)
     config["players"] = max(2, min(4, int(config.get("players") or 2)))
     config["initialLiveCells"] = max(0, int(config.get("initialLiveCells") or 0))
-    config["handSize"] = max(1, int(config.get("handSize") or 5))
+    config["handSize"] = max(1, int(config.get("handSize") or 4))
+    config["patternDrawMode"] = str(config.get("patternDrawMode") or "single")
+    config["smallPatternHand"] = max(0, int(config.get("smallPatternHand") or 2))
+    config["largePatternHand"] = max(0, int(config.get("largePatternHand") or 2))
+    if config["patternDrawMode"] == "split-by-size":
+        config["handSize"] = config["smallPatternHand"] + config["largePatternHand"]
     config["rescueTarget"] = max(1, int(config.get("rescueTarget") or 5))
+    config["requireLargeRescue"] = bool(config.get("requireLargeRescue"))
+    config["largeRescueMinCells"] = max(1, int(config.get("largeRescueMinCells") or 9))
     config["maxTurns"] = max(1, int(config.get("maxTurns") or 300))
     config["maxRecordedGames"] = max(0, int(config.get("maxRecordedGames") or 0))
     return config
@@ -310,6 +322,7 @@ def cards_payload() -> dict[str, Any]:
             "family": variant.family_id,
             "name": variant.name,
             "label": variant.label,
+            "orientation": variant.orientation,
             "category": variant.category,
             "phase": variant.phase,
             "phaseTotal": variant.phase_total,
@@ -326,6 +339,11 @@ def cards_payload() -> dict[str, Any]:
 def deck_options_payload() -> dict[str, Any]:
     cards = load_json("cards.json")
     catalog = build_pattern_card_catalog(cards)
+    mirrored_families = {
+        variant.family_id
+        for variant in catalog.values()
+        if "_t" in variant.card_id and variant.mirrored
+    }
     return {
         "patterns": cards.get("patterns", {}),
         "patternCards": {
@@ -334,6 +352,7 @@ def deck_options_payload() -> dict[str, Any]:
                 "family": variant.family_id,
                 "name": variant.name,
                 "label": variant.label,
+                "orientation": variant.orientation,
                 "category": variant.category,
                 "phase": variant.phase,
                 "phaseTotal": variant.phase_total,
@@ -343,6 +362,13 @@ def deck_options_payload() -> dict[str, Any]:
             }
             for card_id, variant in catalog.items()
             if "_t" in card_id
+            and (
+                variant.orientation == 1
+                or (
+                    cards.get("patterns", {}).get(variant.family_id, {}).get("mirrors")
+                    and variant.family_id not in mirrored_families
+                )
+            )
         },
         "actions": cards.get("actions", []),
     }
@@ -462,6 +488,7 @@ class PatternVariant:
     family_id: str
     name: str
     label: str
+    orientation: int
     phase: int
     phase_total: int
     mirrored: bool
@@ -531,6 +558,7 @@ def build_pattern_card_catalog(cards: dict[str, Any]) -> dict[str, PatternVarian
                     family_id=family_id,
                     name=str(definition.get("name") or family_id),
                     label=label,
+                    orientation=int(seed["orientation"]),
                     phase=phase + 1,
                     phase_total=phase_count,
                     mirrored=bool(seed["mirrored"]),
@@ -551,6 +579,7 @@ def build_pattern_card_catalog(cards: dict[str, Any]) -> dict[str, PatternVarian
                         family_id=family_id,
                         name=str(definition.get("name") or family_id),
                         label=label,
+                        orientation=int(seed["orientation"]),
                         phase=phase + 1,
                         phase_total=phase_count,
                         mirrored=bool(seed["mirrored"]),
@@ -569,6 +598,7 @@ def build_pattern_card_catalog(cards: dict[str, Any]) -> dict[str, PatternVarian
                             family_id=family_id,
                             name=str(definition.get("name") or family_id),
                             label="fase 1",
+                            orientation=1,
                             phase=1,
                             phase_total=phase_count,
                             mirrored=False,
@@ -626,6 +656,7 @@ class Player:
     hand: list[str] = field(default_factory=list)
     rescued: list[str] = field(default_factory=list)
     score: int = 0
+    has_large_rescue: bool = False
 
 
 @dataclass
@@ -636,6 +667,10 @@ class GameState:
     pattern_discard: list[str]
     action_deck: list[str]
     action_discard: list[str]
+    small_pattern_deck: list[str] = field(default_factory=list)
+    large_pattern_deck: list[str] = field(default_factory=list)
+    small_pattern_discard: list[str] = field(default_factory=list)
+    large_pattern_discard: list[str] = field(default_factory=list)
     turn: int = 0
     winner_triggered: bool = False
 
@@ -656,14 +691,36 @@ class Simulator:
         pattern_deck = build_pattern_deck(self.pattern_deck_config, self.pattern_catalog, self.rng)
         action_deck = expand_deck(self.action_deck_config, self.rng)
         players = [Player() for _ in range(self.config["players"])]
-        for player in players:
-            player.hand.extend(draw_many(pattern_deck, [], self.rng, self.config["handSize"]))
+        small_pattern_deck: list[str] = []
+        large_pattern_deck: list[str] = []
+        if self.config.get("patternDrawMode") == "split-by-size":
+            for card_id in pattern_deck:
+                if self.pattern_size_bucket(card_id) == "large":
+                    large_pattern_deck.append(card_id)
+                else:
+                    small_pattern_deck.append(card_id)
+            pattern_deck = []
+            for player in players:
+                player.hand.extend(draw_many(small_pattern_deck, [], self.rng, self.config["smallPatternHand"]))
+                player.hand.extend(draw_many(large_pattern_deck, [], self.rng, self.config["largePatternHand"]))
+        else:
+            for player in players:
+                player.hand.extend(draw_many(pattern_deck, [], self.rng, self.config["handSize"]))
         grid = [[0 for _ in range(COLS)] for _ in range(ROWS)]
         cells = [(row, col) for row in range(ROWS) for col in range(COLS)]
         self.rng.shuffle(cells)
         for row, col in cells[: min(len(cells), self.config["initialLiveCells"])]:
             grid[row][col] = 1
-        return GameState(grid, players, pattern_deck, [], action_deck, [])
+        return GameState(
+            grid,
+            players,
+            pattern_deck,
+            [],
+            action_deck,
+            [],
+            small_pattern_deck=small_pattern_deck,
+            large_pattern_deck=large_pattern_deck,
+        )
 
     def run_game(self, index: int = 0, record_timeline: bool = False) -> dict[str, Any]:
         state = self.new_state()
@@ -739,15 +796,16 @@ class Simulator:
             changed = self.apply_action(state, quadrant, chosen)
             after = self.count_hand_matches(state, player)
             state.action_discard.append(chosen)
+            focus_note = " | foco: buscar padrão grande" if self.needs_large_rescue_focus(player) else ""
             log.append(
-                f"P{player_index + 1} Q{quadrant + 1} {chosen} matches {before}->{after}"
+                f"P{player_index + 1} Q{quadrant + 1} {chosen} matches {before}->{after}{focus_note}"
             )
             if timeline is not None:
                 timeline.append(
                     self.snapshot_step(
                         state,
                         "action",
-                        f"P{player_index + 1} usa {chosen} no Q{quadrant + 1}; matches {before}->{after}",
+                        f"P{player_index + 1} usa {chosen} no Q{quadrant + 1}; matches {before}->{after}{focus_note}",
                         active_player=player_index,
                         quadrant=quadrant,
                         action=chosen,
@@ -932,6 +990,12 @@ class Simulator:
             variant = self.pattern_catalog.get(card_id)
             if not variant:
                 continue
+            focus_multiplier = 1.0
+            if self.needs_large_rescue_focus(player):
+                if self.pattern_size_bucket(card_id) == "large":
+                    focus_multiplier = self.large_rescue_focus_weight(player)
+                elif len(player.rescued) >= int(self.config.get("rescueTarget") or 5):
+                    focus_multiplier = 0.15
             for live_row, live_col in variant.live:
                 start_row = row - live_row
                 start_col = col - live_col
@@ -959,7 +1023,7 @@ class Simulator:
                     candidate = 70 + matched_after * 8
                 else:
                     candidate = matched_after * matched_after * 3 - missing_after
-                best = max(best, candidate * multiplier)
+                best = max(best, candidate * multiplier * focus_multiplier)
         return best
 
     def score_cell_support(self, grid: list[list[int]], player: Player, row: int, col: int) -> float:
@@ -971,6 +1035,12 @@ class Simulator:
             variant = self.pattern_catalog.get(card_id)
             if not variant:
                 continue
+            focus_multiplier = 1.0
+            if self.needs_large_rescue_focus(player):
+                if self.pattern_size_bucket(card_id) == "large":
+                    focus_multiplier = self.large_rescue_focus_weight(player)
+                elif len(player.rescued) >= int(self.config.get("rescueTarget") or 5):
+                    focus_multiplier = 0.15
             for live_row, live_col in variant.live:
                 start_row = row - live_row
                 start_col = col - live_col
@@ -986,7 +1056,7 @@ class Simulator:
                         target_col %= COLS
                     if grid[target_row][target_col]:
                         matched += 1
-                best = max(best, matched * matched * multiplier)
+                best = max(best, matched * matched * multiplier * focus_multiplier)
         return best
 
     def has_adjacent_live_cell(self, grid: list[list[int]], row: int, col: int) -> bool:
@@ -1043,12 +1113,14 @@ class Simulator:
     ) -> None:
         player = state.players[player_index]
         rescued_count = 0
+        rescued_buckets: list[str] = []
         while True:
             match = self.best_rescue_match(state, player)
             if not match:
                 break
             changed = self.resolve_rescue(state, player, match)
             rescued_count += 1
+            rescued_buckets.append(self.pattern_size_bucket(match.card_id, match.points))
             log.append(f"P{player_index + 1} rescued {match.name} for {match.points}")
             if timeline is not None:
                 timeline.append(
@@ -1063,18 +1135,25 @@ class Simulator:
                 )
             if self.config.get("rescuePolicy") != "all":
                 break
-        self.refill_hand(state, player)
+        drawn_patterns = self.refill_hand(state, player, rescued_buckets=rescued_buckets)
         if timeline is not None and rescued_count:
+            if self.config.get("patternDrawMode") == "split-by-size":
+                small_count = sum(1 for bucket in rescued_buckets if bucket == "small")
+                large_count = sum(1 for bucket in rescued_buckets if bucket == "large")
+                draw_text = f"recompra {small_count} do bolo pequeno e {large_count} do bolo grande"
+            else:
+                draw_text = f"recompra padrões até {self.config['handSize']} cartas"
             timeline.append(
                 self.snapshot_step(
-                    state,
-                    "draw-patterns",
-                    f"P{player_index + 1} recompra padrões até {self.config['handSize']} cartas",
-                    active_player=player_index,
-                    changed=[],
+                        state,
+                        "draw-patterns",
+                        f"P{player_index + 1} {draw_text}",
+                        active_player=player_index,
+                        pattern_draw=drawn_patterns,
+                        changed=[],
+                    )
                 )
-            )
-        if rescued_count and len(player.rescued) >= self.config["rescueTarget"]:
+        if rescued_count and self.player_met_end_condition(player):
             state.winner_triggered = True
 
     def rescue_off_turn(
@@ -1091,23 +1170,55 @@ class Simulator:
             if not match:
                 continue
             changed = self.resolve_rescue(state, player, match)
-            self.refill_hand(state, player, one_card=True)
+            bucket = self.pattern_size_bucket(match.card_id, match.points)
+            drawn_patterns = self.refill_hand(state, player, one_card=True, rescued_buckets=[bucket])
             log.append(f"P{player_index + 1} off-turn rescued {match.name} for {match.points}")
             if timeline is not None:
+                draw_text = (
+                    f"e recompra 1 carta do bolo {'grande' if bucket == 'large' else 'pequeno'}"
+                    if self.config.get("patternDrawMode") == "split-by-size"
+                    else "e recompra 1 carta de padrão"
+                )
                 timeline.append(
                     self.snapshot_step(
                         state,
                         "off-turn-rescue",
-                        f"P{player_index + 1} resgata fora do turno {match.name} ({match.points} pts)",
+                        f"P{player_index + 1} resgata fora do turno {match.name} ({match.points} pts) {draw_text}",
                         active_player=active_index,
                         rescued={"player": player_index, "card": match.card_id, "name": match.name, "points": match.points},
+                        pattern_draw=drawn_patterns,
                         changed=changed,
                     )
                 )
-            if len(player.rescued) >= self.config["rescueTarget"]:
+            if self.player_met_end_condition(player):
                 state.winner_triggered = True
                 if self.config.get("finishActiveTurnOnly"):
                     return
+
+    def player_met_end_condition(self, player: Player) -> bool:
+        if len(player.rescued) < self.config["rescueTarget"]:
+            return False
+        if not self.config.get("requireLargeRescue"):
+            return True
+        return player.has_large_rescue
+
+    def pattern_size_bucket(self, card_id: str, points: int | None = None) -> str:
+        if points is None:
+            variant = self.pattern_catalog.get(card_id)
+            points = len(variant.live) if variant else 0
+        return "large" if points >= int(self.config.get("largeRescueMinCells") or 9) else "small"
+
+    def needs_large_rescue_focus(self, player: Player) -> bool:
+        return bool(self.config.get("requireLargeRescue")) and not player.has_large_rescue
+
+    def large_rescue_focus_weight(self, player: Player) -> float:
+        if not self.needs_large_rescue_focus(player):
+            return 1.0
+        # The closer the player is to the rescue target, the more the AI
+        # should stop farming small rescues and build toward a large one.
+        target = max(1, int(self.config.get("rescueTarget") or 5))
+        pressure = min(1.0, len(player.rescued) / target)
+        return 2.5 + pressure * 4.0
 
     def best_rescue_match(self, state: GameState, player: Player) -> Match | None:
         possible: list[Match] = []
@@ -1116,15 +1227,36 @@ class Simulator:
             if count <= 0:
                 continue
             possible.extend(self.find_matches(state.grid, card_id))
+        if (
+            self.needs_large_rescue_focus(player)
+            and len(player.rescued) >= int(self.config.get("rescueTarget") or 5)
+        ):
+            possible = [
+                match
+                for match in possible
+                if self.pattern_size_bucket(match.card_id, match.points) == "large"
+            ]
         if not possible:
             return None
-        possible.sort(key=lambda match: (match.points, match.name), reverse=True)
+        if self.needs_large_rescue_focus(player):
+            possible.sort(
+                key=lambda match: (
+                    self.pattern_size_bucket(match.card_id, match.points) == "large",
+                    match.points,
+                    match.name,
+                ),
+                reverse=True,
+            )
+        else:
+            possible.sort(key=lambda match: (match.points, match.name), reverse=True)
         return possible[0]
 
     def resolve_rescue(self, state: GameState, player: Player, match: Match) -> list[dict[str, Any]]:
         player.hand.remove(match.card_id)
         player.rescued.append(match.card_id)
         player.score += match.points
+        if match.points >= int(self.config.get("largeRescueMinCells") or 9):
+            player.has_large_rescue = True
         changed: list[dict[str, Any]] = []
         for row, col in match.live_cells:
             if state.grid[row][col]:
@@ -1132,10 +1264,27 @@ class Simulator:
             state.grid[row][col] = 0
         return changed
 
-    def refill_hand(self, state: GameState, player: Player, one_card: bool = False) -> None:
-        target = len(player.hand) + 1 if one_card else self.config["handSize"]
+    def refill_hand(
+        self,
+        state: GameState,
+        player: Player,
+        one_card: bool = False,
+        rescued_buckets: list[str] | None = None,
+    ) -> list[str]:
+        if self.config.get("patternDrawMode") == "split-by-size":
+            drawn: list[str] = []
+            for bucket in rescued_buckets or []:
+                if bucket == "large":
+                    drawn.extend(draw_many(state.large_pattern_deck, state.large_pattern_discard, self.rng, 1))
+                else:
+                    drawn.extend(draw_many(state.small_pattern_deck, state.small_pattern_discard, self.rng, 1))
+            player.hand.extend(drawn)
+            return drawn
+        target = min(self.config["handSize"], len(player.hand) + 1) if one_card else self.config["handSize"]
         missing = max(0, target - len(player.hand))
-        player.hand.extend(draw_many(state.pattern_deck, state.pattern_discard, self.rng, missing))
+        drawn = draw_many(state.pattern_deck, state.pattern_discard, self.rng, missing)
+        player.hand.extend(drawn)
+        return drawn
 
     def find_matches(self, grid: list[list[int]], card_id: str) -> list[Match]:
         grid_key = tuple(tuple(row) for row in grid)
@@ -1238,7 +1387,13 @@ class Simulator:
             return 0.0
         score = 0.0
         for card_id in set(player.hand):
-            score += self.card_progress_score(grid, card_id) * player.hand.count(card_id)
+            focus_multiplier = 1.0
+            if self.needs_large_rescue_focus(player):
+                if self.pattern_size_bucket(card_id) == "large":
+                    focus_multiplier = self.large_rescue_focus_weight(player)
+                elif len(player.rescued) >= int(self.config.get("rescueTarget") or 5):
+                    focus_multiplier = 0.15
+            score += self.card_progress_score(grid, card_id) * player.hand.count(card_id) * focus_multiplier
         return score
 
     def card_progress_score(self, grid: list[list[int]], card_id: str) -> float:
@@ -1333,6 +1488,7 @@ class Simulator:
         quadrant: int | None = None,
         action: str | None = None,
         action_draw: list[str] | None = None,
+        pattern_draw: list[str] | None = None,
         rescued: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return {
@@ -1344,11 +1500,16 @@ class Simulator:
             "quadrant": quadrant,
             "action": action,
             "actionDraw": action_draw or [],
+            "patternDraw": pattern_draw or [],
             "rescued": rescued,
             "changed": changed,
             "decks": {
                 "patternDeck": len(state.pattern_deck),
                 "patternDiscard": len(state.pattern_discard),
+                "smallPatternDeck": len(state.small_pattern_deck),
+                "largePatternDeck": len(state.large_pattern_deck),
+                "smallPatternDiscard": len(state.small_pattern_discard),
+                "largePatternDiscard": len(state.large_pattern_discard),
                 "actionDeck": len(state.action_deck),
                 "actionDiscard": len(state.action_discard),
             },
@@ -1358,6 +1519,7 @@ class Simulator:
                     "hand": player.hand[:],
                     "rescued": player.rescued[:],
                     "score": player.score,
+                    "hasLargeRescue": player.has_large_rescue,
                 }
                 for player in state.players
             ],
@@ -1817,22 +1979,24 @@ HTML = r"""<!doctype html>
     .deck-open span { color: #91a0ae; font-size: 12px; }
     .deck-modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(4, 8, 14, .72); backdrop-filter: blur(4px); }
     .deck-modal[hidden] { display: none; }
-    .deck-modal-box { width: min(980px, 100%); max-height: min(760px, 92vh); overflow: auto; border: 1px solid #33404d; border-radius: 10px; background: #151b22; box-shadow: 0 18px 60px rgba(0,0,0,.45); padding: 16px; }
+    .deck-modal-box { width: min(1180px, calc(100vw - 32px)); max-height: min(820px, 92vh); overflow: auto; border: 1px solid #33404d; border-radius: 10px; background: #151b22; box-shadow: 0 18px 60px rgba(0,0,0,.45); padding: 16px; }
     .deck-modal-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
     .deck-modal-head h2 { margin: 0 0 4px; }
     .deck-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
     .deck-modal-section[hidden] { display: none; }
-    .deck-list-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
-    .pattern-family { border: 1px solid #28313d; border-radius: 10px; background: #0d1117; padding: 10px; margin-bottom: 10px; }
-    .pattern-family-head { display: grid; grid-template-columns: minmax(160px, 220px) 1fr; gap: 10px; align-items: start; }
-    .variant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-    .deck-card { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; background: #101821; border: 1px solid #28313d; border-radius: 8px; padding: 9px; }
-    .deck-card.has-art { grid-template-columns: auto 54px minmax(0, 1fr) auto; }
+    .deck-list-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+    #patternDeckEditor { display: block; }
+    .pattern-family { border: 1px solid #28313d; border-radius: 10px; background: #0d1117; padding: 12px; margin-bottom: 12px; }
+    .pattern-family-head { display: grid; gap: 10px; align-items: start; }
+    .variant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px; }
+    .deck-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; background: #101821; border: 1px solid #28313d; border-radius: 8px; padding: 10px; min-width: 0; }
+    .deck-card.has-art { grid-template-columns: auto 70px minmax(0, 1fr) auto; align-items: center; }
+    .deck-card.package-card { border-color: #3e536d; background: #111d2b; }
     .deck-card.off { opacity: .48; }
     .deck-card strong { display: block; font-size: 13px; }
-    .deck-card small { color: #91a0ae; overflow-wrap: anywhere; }
-    .deck-card input[type="number"] { width: 68px; padding: 6px; }
-    .deck-art { width: 54px; min-height: 54px; display: grid; place-items: center; border-radius: 6px; background: #f8fafc; overflow: hidden; }
+    .deck-card small { display: block; color: #91a0ae; overflow-wrap: anywhere; line-height: 1.25; }
+    .deck-card input[type="number"] { width: 68px; padding: 6px; justify-self: end; }
+    .deck-art { width: 70px; min-height: 70px; display: grid; place-items: center; border-radius: 6px; background: #f8fafc; overflow: hidden; }
     .deck-art svg { width: 100%; height: auto; display: block; }
     .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 12px 0; }
     .chart { background: #0d1117; border: 1px solid #28313d; border-radius: 8px; padding: 10px; }
@@ -1899,6 +2063,8 @@ HTML = r"""<!doctype html>
           <li><b>Limite de turnos</b>: corta partidas que demorarem demais.</li>
           <li><b>Celulas iniciais</b>: quantas celulas vivas entram no tabuleiro no comeco.</li>
           <li><b>Resgates para encerrar</b>: meta que dispara o fim da partida.</li>
+          <li><b>Exigir padrao grande</b>: se ligado, a meta de resgates so encerra o jogo se o jogador tambem tiver pelo menos um padrao de 9 ou mais celulas. Se bater a meta so com pequenos, o proximo resgate desse jogador precisa ser grande.</li>
+          <li><b>Modo 2 pequenas + 2 grandes</b>: cada jogador começa com 4 cartas, comprando 2 do bolo pequeno e 2 do bolo grande. Quando resgata, repoe do mesmo bolo da carta resgatada.</li>
         </ul>
       </article>
 
@@ -1960,7 +2126,7 @@ HTML = r"""<!doctype html>
           <li><b>Vitorias</b>: quantas partidas cada jogador venceu.</li>
           <li><b>Score medio</b>: media de pontos por jogador.</li>
           <li><b>Distribuicao de turnos</b>: min, p10, mediana, p90 e max; mostra duracao e variancia.</li>
-          <li><b>Padroes mais resgatados</b>: quais cartas aparecem mais no fim das partidas.</li>
+          <li><b>Padroes resgatados</b>: todas as cartas que apareceram nos resgates das partidas.</li>
           <li><b>CSV</b> baixa os resultados brutos para planilha.</li>
         </ul>
       </article>
@@ -2014,7 +2180,25 @@ HTML = r"""<!doctype html>
         </label>
         <label>Resgates para encerrar
           <input id="rescueTarget" type="number" min="1" value="5">
-          <span class="help">Quando um jogador chega neste numero de padroes resgatados, o fim de jogo e disparado.</span>
+          <span class="help">Meta minima de padroes resgatados. Se a regra de padrao grande estiver ligada, esta meta so encerra o jogo junto com um padrao grande.</span>
+        </label>
+      </div>
+      <div class="row">
+        <label><input id="requireLargeRescue" type="checkbox"> Exigir padrao grande para encerrar
+          <span class="help">Se ligado, o jogo so termina quando alguem tiver a meta de resgates e pelo menos 1 padrao grande. Se bater a meta so com pequenos, o proximo resgate desse jogador deve ser grande.</span>
+        </label>
+        <label>Tamanho minimo do padrao grande
+          <input id="largeRescueMinCells" type="number" min="1" value="9">
+          <span class="help">Padrao: 9 celulas ou mais. O jogador pode ter mais resgates que a meta, mas precisa de pelo menos um padrao deste tamanho.</span>
+        </label>
+      </div>
+      <div class="row">
+        <label>Modo de compra de padroes
+          <select id="patternDrawMode">
+            <option value="single">Modo atual: mao de 4 do baralho inteiro</option>
+            <option value="split-by-size">Teste: 2 pequenas + 2 grandes</option>
+          </select>
+          <span class="help">Modo atual: cada jogador fica com ate 4 cartas do baralho inteiro. No teste, cada jogador começa com 2 pequenas + 2 grandes; ao resgatar, recompra do mesmo bolo da carta resgatada. Pequenas tem menos de 9 celulas; grandes tem 9 ou mais.</span>
         </label>
       </div>
       <div class="row">
@@ -2190,11 +2374,19 @@ function deckCountsFromEntries(entries) {
 }
 
 function deckEntriesFromEditor(kind) {
-  return Array.from(document.querySelectorAll(`[data-deck-kind="${kind}"]`)).map((row) => {
+  const entries = [];
+  Array.from(document.querySelectorAll(`[data-deck-kind="${kind}"]`)).forEach((row) => {
     const enabled = row.querySelector('.deck-enabled').checked;
     const count = enabled ? Math.max(0, Number(row.querySelector('.deck-count').value || 0)) : 0;
-    return { id: row.dataset.cardId, count };
-  }).filter((entry) => entry.count > 0);
+    if (count <= 0) return;
+    const packageVariants = (row.dataset.packageVariants || '').split(',').filter(Boolean);
+    if (packageVariants.length) {
+      packageVariants.forEach((cardId) => entries.push({ id: cardId, count }));
+    } else {
+      entries.push({ id: row.dataset.cardId, count });
+    }
+  });
+  return entries;
 }
 
 function updateDeckTotals() {
@@ -2225,7 +2417,12 @@ function closeDeckModal() {
 function setEditorDeck(kind, entries) {
   const counts = deckCountsFromEntries(entries);
   document.querySelectorAll(`[data-deck-kind="${kind}"]`).forEach((row) => {
-    const count = counts[row.dataset.cardId] || 0;
+    const packageVariants = (row.dataset.packageVariants || '').split(',').filter(Boolean);
+    const rawCount = counts[row.dataset.cardId] || 0;
+    const packageCount = packageVariants.length && rawCount && rawCount % packageVariants.length === 0
+      ? rawCount / packageVariants.length
+      : rawCount;
+    const count = packageVariants.length ? packageCount : rawCount;
     row.querySelector('.deck-enabled').checked = count > 0;
     row.querySelector('.deck-count').value = count;
     row.classList.toggle('off', count <= 0);
@@ -2241,13 +2438,26 @@ function renderDeckEditor() {
     const variants = Object.values(deckOptions.patternCards || {})
       .filter((variant) => variant.family === id)
       .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const rawFamilyCount = patternCounts[id] || 0;
+    const packageCount = variants.length && rawFamilyCount && rawFamilyCount % variants.length === 0
+      ? rawFamilyCount / variants.length
+      : rawFamilyCount;
+    const variantSizes = variants.map((variant) => Number(variant.points || 0)).filter((value) => value > 0);
+    const minCells = variantSizes.length ? Math.min(...variantSizes) : 0;
+    const maxCells = variantSizes.length ? Math.max(...variantSizes) : 0;
+    const sizeText = minCells && maxCells
+      ? minCells === maxCells
+        ? `${minCells} celulas`
+        : `${minCells}-${maxCells} celulas`
+      : 'tamanho indisponivel';
     return {
       id,
       label: card.name || id,
-      detail: `${card.category || 'Padrao'} · ${card.phaseCount || 1} fase(s) · ${variants.length} cartas desenhadas`,
-      count: patternCounts[id] || 0,
+      detail: `Pacote da familia: 1 adiciona ${variants.length} cartas selecionaveis. Tamanho das cartas: ${sizeText}. Use 2 para adicionar a familia duas vezes. Desligue este pacote para montar por carta individual.`,
+      count: packageCount,
       pattern: card.pattern,
-      variants
+      variants,
+      packageVariants: variants.map((variant) => variant.id)
     };
   });
   const actionEntries = (deckOptions.actions || []).map((card) => ({
@@ -2296,7 +2506,8 @@ function patternFamilyEditor(family, counts) {
 
 function deckEditorCard(kind, entry) {
   const art = entry.pattern ? `<span class="deck-art">${buildTinyGridSvg(entry.pattern, entry.mode || 'pattern')}</span>` : '';
-  return `<label class="deck-card ${art ? 'has-art' : ''} ${entry.count > 0 ? '' : 'off'}" data-deck-kind="${kind}" data-card-id="${escapeHtml(entry.id)}">
+  const packageVariants = entry.packageVariants || [];
+  return `<label class="deck-card ${art ? 'has-art' : ''} ${packageVariants.length ? 'package-card' : ''} ${entry.count > 0 ? '' : 'off'}" data-deck-kind="${kind}" data-card-id="${escapeHtml(entry.id)}" data-package-variants="${escapeHtml(packageVariants.join(','))}">
     <input class="deck-enabled" type="checkbox" ${entry.count > 0 ? 'checked' : ''}>
     ${art}
     <span><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.detail)}<br>${escapeHtml(entry.id)}</small></span>
@@ -2319,6 +2530,12 @@ function syncFormToConfig() {
   config.maxTurns = Number(document.getElementById('maxTurns').value || 300);
   config.initialLiveCells = Number(document.getElementById('initialLiveCells').value || 12);
   config.rescueTarget = Number(document.getElementById('rescueTarget').value || 5);
+  config.requireLargeRescue = document.getElementById('requireLargeRescue').checked;
+  config.largeRescueMinCells = Number(document.getElementById('largeRescueMinCells').value || 9);
+  config.patternDrawMode = document.getElementById('patternDrawMode').value;
+  config.smallPatternHand = 2;
+  config.largePatternHand = 2;
+  config.handSize = config.patternDrawMode === 'split-by-size' ? 4 : Number(config.handSize || 4);
   config.maxRecordedGames = Number(document.getElementById('maxRecordedGames').value || 0);
   config.recordTimeline = document.getElementById('recordTimeline').value === 'true';
   config.offTurnRescue = document.getElementById('offTurnRescue').checked;
@@ -2346,6 +2563,9 @@ function applyConfig(config) {
   document.getElementById('maxTurns').value = config.maxTurns;
   document.getElementById('initialLiveCells').value = config.initialLiveCells;
   document.getElementById('rescueTarget').value = config.rescueTarget;
+  document.getElementById('requireLargeRescue').checked = Boolean(config.requireLargeRescue);
+  document.getElementById('largeRescueMinCells').value = config.largeRescueMinCells || 9;
+  document.getElementById('patternDrawMode').value = config.patternDrawMode || 'single';
   document.getElementById('maxRecordedGames').value = config.maxRecordedGames ?? 20;
   document.getElementById('recordTimeline').value = String(config.recordTimeline !== false);
   document.getElementById('offTurnRescue').checked = Boolean(config.offTurnRescue);
@@ -2387,10 +2607,11 @@ function metric(label, value) {
   return `<div class="metric"><span>${label}</span><b>${value}</b></div>`;
 }
 
-function renderDeckCounts(counts, limit = 20) {
+function renderDeckCounts(counts, limit = null) {
   const entries = Object.entries(counts || {});
   if (!entries.length) return '-';
-  return `<div class="deck-list">${entries.slice(0, limit).map(([key, value]) => `<span>${escapeHtml(key)}: ${value}</span>`).join('')}</div>`;
+  const visible = Number.isFinite(limit) ? entries.slice(0, limit) : entries;
+  return `<div class="deck-list">${visible.map(([key, value]) => `<span>${escapeHtml(key)}: ${value}</span>`).join('')}</div>`;
 }
 
 function renderScenarioTable(job) {
@@ -2415,8 +2636,8 @@ function renderScenarioTable(job) {
           <td>${escapeHtml(scenario.label)}</td>
           <td>P${vars.players}, cel ${vars.initialLiveCells}, alvo ${vars.rescueTarget}<br>${escapeHtml(vars.patternDeckLabel || '')}</td>
           <td>avg ${turns.avg ?? '-'}<br>med ${turns.median ?? '-'}<br>p90 ${turns.p90 ?? '-'}</td>
-          <td>Total ${vars.patternDeckTotal ?? '-'}${renderDeckCounts(vars.patternDeckCounts, 12)}</td>
-          <td>${renderDeckCounts(summary.rescuedByCard, 12)}</td>
+          <td>Total ${vars.patternDeckTotal ?? '-'}${renderDeckCounts(vars.patternDeckCounts)}</td>
+          <td>${renderDeckCounts(summary.rescuedByCard)}</td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -2438,7 +2659,7 @@ function renderCharts(job) {
   const summary = job.summary || {};
   const wins = (summary.wins || []).map((value, index) => ({ label: `P${index + 1}`, value }));
   const scores = (summary.avgScoreByPlayer || []).map((value, index) => ({ label: `P${index + 1}`, value }));
-  const rescued = Object.entries(summary.rescuedByCard || {}).slice(0, 10).map(([label, value]) => ({ label, value }));
+  const rescued = Object.entries(summary.rescuedByCard || {}).map(([label, value]) => ({ label, value }));
   const turnStats = summary.turns
     ? [
         { label: 'min', value: summary.turns.min },
@@ -2453,7 +2674,7 @@ function renderCharts(job) {
     ${wins.length ? `<div class="chart"><h4>Vitorias</h4>${barRows(wins, '#8fd6b3')}</div>` : ''}
     ${scores.length ? `<div class="chart"><h4>Score medio</h4>${barRows(scores, '#f4c95d')}</div>` : ''}
     ${turnStats.length ? `<div class="chart"><h4>Distribuicao de turnos</h4>${barRows(turnStats, '#8fbff7')}</div>` : ''}
-    ${rescued.length ? `<div class="chart"><h4>Padroes mais resgatados</h4>${barRows(rescued, '#c6a7ff')}</div>` : ''}
+    ${rescued.length ? `<div class="chart"><h4>Padroes resgatados</h4>${barRows(rescued, '#c6a7ff')}</div>` : ''}
   </div>`;
 }
 
@@ -2478,7 +2699,7 @@ function renderJob(job) {
   const rounds = summary.rounds || {};
   const wins = summary.wins || [];
   const cards = summary.rescuedByCard || {};
-  const cardLines = Object.entries(cards).slice(0, 12).map(([key, value]) => `${key}: ${value}`).join('\n');
+  const cardLines = Object.entries(cards).map(([key, value]) => `${key}: ${value}`).join('\n');
   const scenarioNote = job.scenarioCount && job.scenarioCount > 1
     ? `<p>Cenarios: ${job.scenarioCount} | Jogos totais: ${summary.games || '-'}</p>`
     : '';
@@ -2681,7 +2902,7 @@ function renderBoard(step) {
 function renderPlayers(step) {
   document.getElementById('playersView').innerHTML = (step.players || []).map((player, index) => `
     <article class="player">
-      <h4><span>P${index + 1}${step.activePlayer === index ? ' - ativo' : ''}</span><span>${player.score} pts | ${player.rescued.length} resgates</span></h4>
+      <h4><span>P${index + 1}${step.activePlayer === index ? ' - ativo' : ''}</span><span>${player.score} pts | ${player.rescued.length} resgates${player.hasLargeRescue ? ' | grande ok' : ''}</span></h4>
       <p>Mao</p>
       <div class="hand">${player.hand.map((card) => renderMiniCard(card, 'pattern')).join('') || '<p>Sem cartas</p>'}</div>
       <p style="margin-top:8px">Resgatadas</p>
@@ -2692,15 +2913,20 @@ function renderPlayers(step) {
 
 function renderEvent(step) {
   const actionCards = (step.actionDraw || []).map((card) => renderMiniCard(card, 'action')).join('');
+  const patternCards = (step.patternDraw || []).map((card) => renderMiniCard(card, 'pattern')).join('');
   const changedSummary = (step.changed || []).length
     ? `${step.changed.length} celulas alteradas`
     : 'sem mudanca no grid';
+  const patternDeckText = step.decks?.smallPatternDeck != null
+    ? `Padroes: pequeno ${step.decks.smallPatternDeck} / grande ${step.decks.largePatternDeck}`
+    : `Padroes: deck ${step.decks?.patternDeck ?? '-'} / descarte ${step.decks?.patternDiscard ?? '-'}`;
   document.getElementById('eventBox').innerHTML = `
     <b>Passo ${step.step} | Turno ${step.turn + 1} | ${escapeHtml(step.kind)}</b>
     <p>${escapeHtml(step.message)}</p>
     <p>${changedSummary} | celulas vivas: ${step.liveCells}</p>
-    <p>Acoes: deck ${step.decks?.actionDeck ?? '-'} / descarte ${step.decks?.actionDiscard ?? '-'} | Padroes: deck ${step.decks?.patternDeck ?? '-'} / descarte ${step.decks?.patternDiscard ?? '-'}</p>
+    <p>Acoes: deck ${step.decks?.actionDeck ?? '-'} / descarte ${step.decks?.actionDiscard ?? '-'} | ${patternDeckText}</p>
     ${actionCards ? `<div class="hand" style="margin-top:8px">${actionCards}</div>` : ''}
+    ${patternCards ? `<p style="margin-top:8px">Padroes comprados</p><div class="hand" style="margin-top:8px">${patternCards}</div>` : ''}
   `;
 }
 

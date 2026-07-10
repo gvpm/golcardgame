@@ -55,7 +55,7 @@ The simulator currently models:
 
 - Grid size: 20 x 14.
 - 2, 3, or 4 players.
-- Each player starts with 5 pattern cards.
+- Each player starts with 4 pattern cards.
 - Initial live cells default to 12, configurable.
 - Each active turn:
   - roll/select quadrant side abstractly
@@ -64,7 +64,7 @@ The simulator currently models:
   - discard unused action and then used action
   - active player rescues matching patterns
   - optional off-turn rescues
-  - refill pattern hand
+  - refill pattern hand up to 4 cards
 - End condition default: first player reaching 5 rescued patterns triggers game end.
 - Score: sum of live cells in rescued patterns.
 - Rescued pattern cards stay in player scoring area and do not return to the pattern deck.
@@ -244,4 +244,3 @@ At the time of this handoff, the main new/changed files are:
 - `playtest_server.py` new
 - `README.md` updated
 - `PLAYTEST_CONTEXT.md` new
-
