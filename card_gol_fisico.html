@@ -3,19 +3,19 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#222;font-family:Arial,sans-serif;color:#171717;font-size:10pt;line-height:1.25}
+body{margin:0;background:#222;font-family:Arial,sans-serif;color:#171717;font-size:9.6pt;line-height:1.2}
 .toolbar{position:sticky;top:0;background:#111;padding:10px}
 button{padding:10px 16px;background:#333;color:#fff;border:none;border-radius:8px}
-.page{position:relative;width:148mm;min-height:210mm;background:#fff;margin:20px auto;padding:9mm 10mm 13mm;box-shadow:0 0 12px rgba(0,0,0,.3)}
-.page::after{content:"Página " attr(data-page);position:absolute;left:10mm;right:10mm;bottom:5mm;text-align:center;font-size:8pt;color:#666}
-h1{font-size:20pt;line-height:1.05;margin:0 0 3mm}
-h2{font-size:13pt;line-height:1.1;margin:4mm 0 1.5mm;border-bottom:1px solid #bbb;padding-bottom:1mm}
-p{margin:1.5mm 0}
-ul,ol{margin:1.5mm 0;padding-left:6mm}
-li{margin:.7mm 0}
-.box{border:1px solid #aaa;border-radius:6px;padding:2.5mm;margin:2mm 0;background:#f7f7f7}
-table{border-collapse:collapse;width:100%;font-size:8.5pt}
-td,th{border:1px solid #aaa;padding:1.1mm 1.5mm;text-align:left}
+.page{position:relative;width:148mm;min-height:210mm;background:#fff;margin:20px auto;padding:8mm 9mm 15mm;box-shadow:0 0 12px rgba(0,0,0,.3)}
+.page::after{content:"Página " attr(data-page);position:absolute;left:10mm;right:10mm;bottom:2.5mm;text-align:center;font-size:7.5pt;color:#666}
+h1{font-size:19pt;line-height:1.03;margin:0 0 2.5mm}
+h2{font-size:12.5pt;line-height:1.08;margin:3.2mm 0 1.2mm;border-bottom:1px solid #bbb;padding-bottom:.8mm}
+p{margin:1.2mm 0}
+ul,ol{margin:1.2mm 0;padding-left:5.5mm}
+li{margin:.5mm 0}
+.box{border:1px solid #aaa;border-radius:6px;padding:2.1mm;margin:1.6mm 0;background:#f7f7f7}
+table{border-collapse:collapse;width:100%;font-size:8pt}
+td,th{border:1px solid #aaa;padding:.85mm 1.2mm;text-align:left}
 th{background:#ececec}
 .deck-grid{display:grid;grid-template-columns:1fr 1fr;gap:4mm;align-items:start}
 .deck-grid h2{margin-top:0}
@@ -47,7 +47,7 @@ th{background:#ececec}
 @media print{
   body{background:#fff}
   .toolbar{display:none}
-  .page{width:148mm;height:210mm;min-height:210mm;margin:0;padding:9mm 10mm 13mm;box-shadow:none;break-after:page;page-break-after:always;overflow:hidden}
+  .page{width:148mm;height:210mm;min-height:210mm;margin:0;padding:8mm 9mm 15mm;box-shadow:none;break-after:page;page-break-after:always;overflow:hidden}
   .page:last-child{break-after:auto;page-break-after:auto}
   h1,h2{break-after:avoid;page-break-after:avoid}
   .box,table{break-inside:avoid;page-break-inside:avoid}
